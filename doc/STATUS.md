@@ -105,6 +105,7 @@
 | 2026-10-01 | — | Approved R1 defaults applied (single `Cancelled` terminal + `TicketRefunded` event; `markUsed` on NFT + pause matrix; marketplace math authoritative; 10% royalty cap / 120% price cap / 24h listing / 2h check-in / `S-<n>`; protected IPFS upload with mock fallback). No code written. |
 | 2026-10-01 | 0 | Phase 0 complete: Hardhat 3.18 ESM project, solc 0.8.28, solhint 6, mocha-based `npm test` orchestrator, secret scan, README/.gitignore/`.solhint.json`. Compile + gates green. |
 | 2026-10-01 | 1 | Phase 1 complete: 5 contracts (registry, inventory, NFT skeleton, settlement skeleton, marketplace skeleton) + deploy/seed scripts + 23 unit tests green; lint 0 errors; secret scan clean; deploy+seed verified on fresh localhost node; generated `contracts-config.js` (chainId 31337). |
+| 2026-10-01 | 1 | README rewritten (NoorUp style); repo published to https://github.com/InfinityAbir/Airlines-Ticketing-System (public, `main`), Phases 0–1 committed as `fa1f060`. Excluded from tracking: generated config, `.env`, build artifacts, tool caches, source-paper PDF. Next: Phase 2. |
 
 ## Locked R1 Defaults (approved 2026-10-01)
 
