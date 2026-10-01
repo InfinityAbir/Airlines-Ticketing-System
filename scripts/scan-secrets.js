@@ -1,6 +1,8 @@
 // Minimal tracked-secret scanner (Phase 0 gate).
 // Fails (exit 1) if likely secrets appear in tracked text files.
-// Scans: contracts/, scripts/, test/, frontend/, server/ (excluding generated config + env examples).
+// Scans: contracts/, scripts/, test/, frontend/, server/ (excluding generated config +
+// env examples + vendored third-party bundles such as ethers.umd.min.js, whose minified
+// source legitimately contains 64-hex constants and the word "mnemonic").
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -27,6 +29,8 @@ function walk(dir) {
       continue;
     }
     if (SKIP.has(entry.name)) continue;
+    // Vendored third-party bundles are not project-authored; skip them.
+    if (p.split(path.sep).includes("vendor")) continue;
     if (!/\.(sol|js|html|css|json|example)$/.test(entry.name)) continue;
     const text = fs.readFileSync(p, "utf8");
     for (const re of PATTERNS) {

@@ -13,6 +13,7 @@
     "seed": "hardhat run scripts/seed.js",
     "lint": "solhint contracts/**/*.sol",
     "scan": "node scripts/scan-secrets.js",
+    "upload": "node server/upload.js",
     "node": "hardhat node"
   },
   "keywords": [],

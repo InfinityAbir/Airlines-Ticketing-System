@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Airline Ticketing Prototype — secure, transparent ticketing on a local chain</title>
+  <meta name="description" content="Educational blockchain prototype: buy a flight seat, receive an NFT ticket, and audit every step on a local Hardhat chain.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header>
+    <div class="disclosure-strip">
+      Educational prototype. Test ETH, sample flights, simulated credential check. Not a real booking system.
+    </div>
+    <nav class="navbar" aria-label="Main navigation">
+      <div class="navbar-inner">
+        <a class="brand" href="index.html" aria-current="page">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+          </span>
+          Airline Ticketing Prototype
+        </a>
+        <ul class="nav-links">
+          <li><a href="flights.html">Flights</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 4">Marketplace</a></li>
+          <li><a href="tickets.html">My Tickets</a></li>
+          <li><a href="airline.html">Airline</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 5">Admin</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 3">Verify</a></li>
+        </ul>
+        <div class="nav-right">
+          <span class="pill pill-idle" data-role="network">Checking network…</span>
+          <span class="role-chip" data-role="role">Guest</span>
+          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+        </div>
+      </div>
+    </nav>
+    <div class="network-line"><span data-role="network-line">Loading network status…</span></div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title">One ticket, one shared record anyone can audit.</h1>
+      <p>
+        This prototype turns a flight booking into a restricted NFT on a local blockchain:
+        payment, seat reservation, and minting happen in a single transaction, and every
+        step leaves a public event trail — no central database, no hidden edits.
+      </p>
+      <div class="hero-steps" aria-label="Three-step demo path">
+        <span class="hero-step"><span class="n">1</span> Browse sample flights</span>
+        <span class="hero-step"><span class="n">2</span> Buy a seat with test ETH</span>
+        <span class="hero-step"><span class="n">3</span> Verify your ticket</span>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="flights.html">Browse flights</a>
+        <button type="button" class="btn btn-secondary" data-role="connect">Connect wallet</button>
+      </div>
+    </section>
+
+    <div class="grid grid-2 mt-5">
+      <section class="card" aria-labelledby="net-title">
+        <div class="card-title"><h2 id="net-title">Network status</h2></div>
+        <dl class="kv">
+          <dt>Supported chain</dt>
+          <dd>Hardhat local — chain <span id="expected-chain">…</span></dd>
+          <dt>Connected wallet</dt>
+          <dd id="home-wallet">Not connected</dd>
+          <dt>Contract config</dt>
+          <dd id="home-config">Checking…</dd>
+        </dl>
+        <p class="small muted mt-3 mb-0">
+          Writes are blocked on any other chain. If your wallet is on a different network,
+          use the switch button in the network line above.
+        </p>
+      </section>
+
+      <section class="card" aria-labelledby="roles-title">
+        <div class="card-title"><h2 id="roles-title">Enter by role</h2></div>
+        <div class="grid grid-2">
+          <a class="btn" href="flights.html">Traveler — browse &amp; book</a>
+          <a class="btn" href="airline.html">Airline operator — flights</a>
+          <button type="button" class="btn" data-phase="Phase 5">Administrator — approvals</button>
+          <button type="button" class="btn" data-phase="Phase 3">Verifier — check a ticket</button>
+        </div>
+        <p class="small muted mt-3 mb-0">
+          Your current role chip in the navbar updates automatically from on-chain permissions.
+        </p>
+      </section>
+    </div>
+
+    <div class="section-head"><h2>What this prototype demonstrates</h2></div>
+    <div class="grid grid-3">
+      <article class="card">
+        <h3>Atomic booking</h3>
+        <p class="small muted mb-0">
+          Exact-value payment, one seat reserved, one NFT minted, metadata CID recorded —
+          all or nothing. A failed payment mints nothing.
+        </p>
+      </article>
+      <article class="card">
+        <h3>Auditable lifecycle</h3>
+        <p class="small muted mb-0">
+          Every state change emits an event (purchase, cancellation, refund, resale), so
+          dashboards can be rebuilt straight from the chain.
+        </p>
+      </article>
+      <article class="card">
+        <h3>No plaintext personal data</h3>
+        <p class="small muted mb-0">
+          Ticket metadata is fictional and stored off-chain behind a CID; the chain and the
+          public verifier only ever see wallet addresses and ticket state.
+        </p>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    Airline Ticketing Prototype — educational demo on a local Hardhat chain. Test ETH only; no real money, bookings, or identity verification.
+  </footer>
+
+  <script src="assets/vendor/ethers.umd.min.js"></script>
+  <script src="assets/js/contracts-config.js"></script>
+  <script src="assets/js/app-config.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/wallet.js"></script>
+  <script src="assets/js/index.js"></script>
+</body>
+</html>

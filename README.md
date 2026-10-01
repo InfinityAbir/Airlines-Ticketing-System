@@ -294,7 +294,7 @@ Airlines-Ticketing-System/
 
 - [x] **Phase 0** — Repo scaffolding: Hardhat 3, lint, test runner, secret scan
 - [x] **Phase 1** — Foundation contracts, roles, deploy + seed, 23 unit tests
-- [ ] **Phase 2** — Booking flow, protected IPFS upload, airline creation UI, ticket wallet
+- [x] **Phase 2** — Booking flow, protected IPFS upload, airline creation UI, ticket wallet
 - [ ] **Phase 3** — Cancellation + refunds, use/boarding, public verification page
 - [ ] **Phase 4** — Marketplace list/buy and royalty distribution
 - [ ] **Phase 5** — Admin console, audit feed, emergency controls UI

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browse flights — Airline Ticketing Prototype</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header>
+    <div class="disclosure-strip">
+      Educational prototype. Test ETH, sample flights, simulated credential check. Not a real booking system.
+    </div>
+    <nav class="navbar" aria-label="Main navigation">
+      <div class="navbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+          </span>
+          Airline Ticketing Prototype
+        </a>
+        <ul class="nav-links">
+          <li><a href="flights.html" aria-current="page">Flights</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 4">Marketplace</a></li>
+          <li><a href="tickets.html">My Tickets</a></li>
+          <li><a href="airline.html">Airline</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 5">Admin</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 3">Verify</a></li>
+        </ul>
+        <div class="nav-right">
+          <span class="pill pill-idle" data-role="network">Checking network…</span>
+          <span class="role-chip" data-role="role">Guest</span>
+          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+        </div>
+      </div>
+    </nav>
+    <div class="network-line"><span data-role="network-line">Loading network status…</span></div>
+  </header>
+
+  <main>
+    <div class="section-head">
+      <h1>Browse flights</h1>
+      <span class="result-count" id="result-count">Loading…</span>
+    </div>
+
+    <div id="page-notices" class="stack mb-0"></div>
+
+    <section class="card" aria-label="Flight filters">
+      <div class="filters">
+        <div class="field">
+          <label for="filter-origin">From</label>
+          <input type="text" id="filter-origin" placeholder="e.g. DAC" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="filter-dest">To</label>
+          <input type="text" id="filter-dest" placeholder="e.g. DXB" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="filter-date">Departure date</label>
+          <input type="date" id="filter-date">
+        </div>
+        <button type="button" class="btn" id="filter-clear">Clear</button>
+        <button type="button" class="btn btn-ghost" id="refresh-btn">Refresh</button>
+      </div>
+    </section>
+
+    <div class="grid grid-2 mt-4" id="flights-grid" aria-live="polite"></div>
+  </main>
+
+  <footer class="site-footer">
+    Airline Ticketing Prototype — educational demo on a local Hardhat chain. Test ETH only; no real money, bookings, or identity verification.
+  </footer>
+
+  <script src="assets/vendor/ethers.umd.min.js"></script>
+  <script src="assets/js/contracts-config.js"></script>
+  <script src="assets/js/app-config.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/wallet.js"></script>
+  <script src="assets/js/flights.js"></script>
+</body>
+</html>
