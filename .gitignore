@@ -1,0 +1,14 @@
+node_modules/
+artifacts/
+cache/
+.codebase-memory/
+node.log
+*.err.log
+Paper/*.pdf
+coverage/
+.env
+server/.env
+*.key
+*.mnemonic
+frontend/assets/js/contracts-config.js
+!frontend/assets/js/contracts-config.example.js

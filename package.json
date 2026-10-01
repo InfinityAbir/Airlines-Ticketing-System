@@ -1,0 +1,33 @@
+{
+  "name": "airlines-ticketing-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc"
+  },
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "node scripts/run-tests.js",
+    "deploy": "hardhat run scripts/deploy.js",
+    "seed": "hardhat run scripts/seed.js",
+    "lint": "solhint contracts/**/*.sol",
+    "scan": "node scripts/scan-secrets.js",
+    "node": "hardhat node"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^4.2.0",
+    "hardhat": "^3.18.0",
+    "mocha": "^12.0.3",
+    "solhint": "^6.2.4"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1",
+    "chai": "^6.3.0",
+    "ethers": "^6.17.0"
+  }
+}
