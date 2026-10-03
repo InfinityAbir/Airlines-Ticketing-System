@@ -87,6 +87,24 @@
 - Reasoning: environment-specific config prevents the "fixed to local network" failure mode while keeping local demo one-command.
 - Affects: scripts, `wallet.js`, Phase 1.
 
+## D-20 — Refund escrow held inside the airline balance (approved 2026-10-02)
+
+- Decision: `purchase` credits the full fare (`airlineBalances[airline] += price`) **and** adds `refundReserve[airline] += price * refundBps / 10000`; `cancel` debits the refund from both (then pays the traveler); `withdrawAirlineBalance` pays `balance - refundReserve` only. The reserve is the slice of an airline's own credit that still backs active tickets.
+- Reasoning: one ledger per airline instead of a second accounting structure; withdrawal stays a single subtraction; escrowed ETH is unwinnable by the withdraw path, and the reserve decays automatically as tickets cancel (each cancel removes exactly the share that purchase added). Cross-airline withdrawal stays impossible (D-11).
+- Affects: `TicketSettlement` (`cancel`, `withdrawAirlineBalance`, `refundReserve`), ARCHITECTURE.md §4.4, Phase 3 tests, airline withdrawal panel.
+
+## D-21 — Client-side QR generation with a vendored MIT library (approved 2026-10-02)
+
+- Decision: `frontend/assets/vendor/qrcode.js` (`qrcode-generator@2.0.4`, MIT) renders a data-URL image of `verify.html?ticketId=N` in `ui.js` (`qrDataUrl`, `verifyLink`); the wallet card and verifier page both use it.
+- Reasoning: the demo must run offline against a local chain — an external QR API would be a runtime dependency and would leak ticket links off-machine. Same vendoring pattern as ethers (small, MIT, checked-in bundle), and the secret scanner's `vendor/` exclusion already covers it.
+- Affects: `ui.js`, `tickets.js` card, `verify.html`, Phase 3.
+
+## D-22 — `list` takes an explicit `expiresAt` argument (approved 2026-10-03)
+
+- Decision: `TicketMarketplace.list(uint256 tokenId, uint256 priceWei, uint256 expiresAt)`; the contract does **not** compute the 24-hour default internally. `previewResale(tokenId, 0)` still returns `defaultExpiry` and `checkinBound` so callers/UI can prefill a compliant value.
+- Reasoning: the frontend must show and let the seller edit the expiry (it is displayed on the listing card, in the withdraw modal, and in history), and the test suite must be able to target both boundaries — `ExpiryInPast__expiresAt` and `ExpiryPastCheckin__expiresAt` — directly instead of manipulating `block.timestamp` around an internal default. The 24-hour default stays an R1 constant (`DEFAULT_LISTING_DURATION`) applied by the caller, so the on-chain rule remains only the two bounds: `expiresAt > now` and `expiresAt <= departureTime - 2h`.
+- Affects: `TicketMarketplace.sol` (`list`, `previewResale`), `test/ticketMarketplace.test.js`, `frontend/assets/js/tickets.js` (list modal with `datetime-local` expiry input + live validation), ARCHITECTURE.md §4.5.
+
 ## Pending / Deferred (not decided — need input)
 
 - P-05: `Design.md` vs `DESIGN.md` filename on case-insensitive filesystems (`DESIGN.md` canonical per workflow; no separate `Design.md` created).

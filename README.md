@@ -97,32 +97,29 @@ This is also my exploration of production-grade Solidity patterns: OpenZeppelin 
 - Seat-level reserve/release primitives (purchase path completes them in Phase 2)
 - FR-08 validation on create: departure in the future, sane capacity, royalty within cap
 
-### 3. Ticket NFT (`AirTicketNFT.sol`) — Phase 1 skeleton
+### 3. Ticket NFT (`AirTicketNFT.sol`) — Phases 1–4
 
-- Restricted ERC-721: transfers blocked while platform is paused
-- Lifecycle states: `None → Issued → (Cancelled | Used | Invalid)`
+- Restricted ERC-721: transfers blocked while platform is paused, only the settlement/marketplace pathway may move a ticket
+- Lifecycle states: `Issued → Listed → (Issued | Cancelled | Used | Invalid)`; `markListed`/`markUnlisted` are `MARKETPLACE_ROLE` only
 - ERC-2981 `royaltyInfo` view, display-only and mirroring the marketplace's stored basis points
 - `markUsed` sole writer is this contract: `AIRLINE_ROLE`, own flight, only from `departureTime - 2h`
 
-### 4. Settlement & Marketplace (`TicketSettlement.sol`, `TicketMarketplace.sol`) — Phase 1 skeletons
+### 4. Settlement & Marketplace (`TicketSettlement.sol`, `TicketMarketplace.sol`) — Phases 1–4 complete
 
-- Role gates, custom errors, and events in place; purchase logic lands in Phase 2, cancellation in Phase 3, marketplace settlement in Phase 4
-- Marketplace settlement math is authoritative for all seller/royalty splits
-- Pull-based `withdrawAirlineBalance` per airline — never cross-airline, always `nonReentrant`
+- `purchase` / `calculateRefund` / `previewSeatReference` (Phase 2–3): exact payment, per-flight seat pool, refund-reserve escrow (D-20)
+- `withdrawAirlineBalance` per airline — never cross-airline, always `nonReentrant`
+- Marketplace settlement math is authoritative for all seller/royalty splits: `list(tokenId, priceWei, expiresAt)` → `buyListing` pays the airline royalty straight to its wallet and the remainder to the seller in one atomic tx (`royalty + proceeds == price`), with a 120%-of-fare price cap and an expiry no later than departure − 2h (Phase 4)
 
 ### 5. Deployment & Verification
 
 - `npm run deploy` writes `frontend/assets/js/contracts-config.js` (chainId + 5 addresses, git-ignored)
 - `npm run seed` approves one airline and publishes the sample flight `R1-DEMO-001`
-- 23 unit tests cover role gates, validation rejections, and the full pause matrix
+- 88 unit tests cover role gates, validation rejections, the pause matrix, purchase, cancellation, and the full resale split
 
-### Planned (Phases 2–6)
+### Remaining (Phases 5–6)
 
-- Protected IPFS upload endpoint → CID → atomic `purchase(flightId, cid)` with mock-CID fallback
-- Traveler wallet, checkout, flights, and public verification pages
-- Cancellation with refund preview, `TicketRefunded` event display, receipt-hash verification
-- Marketplace list/buy UI with pre-confirmation royalty breakdown
 - Admin console with approvals, limits, pause, and filtered audit feed
+- Quality gates: coverage, static-analysis hardening, deterministic demo script
 
 ---
 
@@ -137,7 +134,7 @@ This is also my exploration of production-grade Solidity patterns: OpenZeppelin 
 - Hardhat 3.18 (ESM), `@nomicfoundation/hardhat-ethers` 4.2, Ethers v6, Mocha + Chai 6 test runners
 - Solhint 6 (`solhint:recommended`) for static linting, custom secret scanner for credential leaks
 
-**Planned frontend/backend (Phases 2+):**
+**Frontend & backend:**
 
 - Vanilla HTML/CSS/JavaScript with Ethers wallet connection (no framework, no build step)
 - Node.js protected upload endpoint (`server/`) — IPFS credentials live only in `server/.env`
@@ -211,7 +208,7 @@ Design rules locked for R1 (see `doc/DECISIONS.md`):
    npm test
    ```
 
-### Local Demo (Phase 1 — contract level)
+### Local Demo (Phases 1–4)
 
 Terminal 1 — start the local chain:
 
@@ -228,6 +225,15 @@ npm run seed -- --network localhost
 
 This approves the airline operator wallet, creates and publishes the five-seat sample flight `R1-DEMO-001` (flightId 1), and writes the contract addresses to `frontend/assets/js/contracts-config.js` (git-ignored, generated per environment).
 
+Terminal 3 — serve the frontend and the protected upload endpoint:
+
+```bash
+npx serve frontend          # or any static file server on frontend/
+node server/upload.js       # protected IPFS endpoint (mock CID fallback when unconfigured)
+```
+
+Open `http://localhost:3000` (or your server's port), connect a wallet on chain 31337, and the full path works end to end: browse → book → My Tickets → list for resale → marketplace → buy → airline royalty metrics.
+
 ---
 
 ## Quality Gates
@@ -237,8 +243,8 @@ Every phase must pass all four before it is marked complete in `doc/STATUS.md`:
 | Gate | Command | Latest result |
 |---|---|---|
 | Compile | `npm run compile` | 5 files, solc 0.8.28, cancun |
-| Tests | `npm test` | 23/23 passing |
-| Lint | `npm run lint` | 0 errors |
+| Tests | `npm test` | 88/88 passing |
+| Lint | `npm run lint` | 0 errors (306 warnings = baseline) |
 | Secret scan | `npm run scan` | clean |
 
 > Never commit API keys, provider tokens, private keys, or seed phrases. IPFS provider credentials live only in `server/.env` (git-ignored) — never in frontend code.
@@ -267,9 +273,11 @@ Airlines-Ticketing-System/
 │   ├── seed.js                    # approves airline, publishes sample flight
 │   ├── run-tests.js               # npm test orchestrator (node + mocha)
 │   └── scan-secrets.js            # credential leak scanner
-├── frontend/assets/js/            # contracts-config.js (generated, git-ignored)
+├── frontend/                     # index, flights, checkout, tickets, marketplace, airline, verify
+│   └── assets/{js,css,vendor}/    # shared wallet/UI layer, ABIs, vendored ethers + QR
 ├── server/.env.example            # protected IPFS upload endpoint (Phase 2)
 ├── doc/                           # PRD, architecture, design, status, decisions
+│   └── screenshots/{phase2..4}/   # per-phase browser verification captures
 ├── Paper/                         # IEEE paper (LaTeX)
 ├── hardhat.config.js
 ├── .solhint.json
@@ -295,8 +303,8 @@ Airlines-Ticketing-System/
 - [x] **Phase 0** — Repo scaffolding: Hardhat 3, lint, test runner, secret scan
 - [x] **Phase 1** — Foundation contracts, roles, deploy + seed, 23 unit tests
 - [x] **Phase 2** — Booking flow, protected IPFS upload, airline creation UI, ticket wallet
-- [ ] **Phase 3** — Cancellation + refunds, use/boarding, public verification page
-- [ ] **Phase 4** — Marketplace list/buy and royalty distribution
+- [x] **Phase 3** — Cancellation + refunds, use/boarding, public verification page
+- [x] **Phase 4** — Marketplace list/buy and royalty distribution
 - [ ] **Phase 5** — Admin console, audit feed, emergency controls UI
 - [ ] **Phase 6** — Quality gates, static analysis hardening, demo readiness
 - [ ] **Paper** — testing/evaluation section from verified prototype measurements

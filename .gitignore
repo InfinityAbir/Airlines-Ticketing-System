@@ -4,6 +4,8 @@ cache/
 .codebase-memory/
 node.log
 *.err.log
+*.out.log
+.playwright-mcp/
 Paper/*.pdf
 coverage/
 .env

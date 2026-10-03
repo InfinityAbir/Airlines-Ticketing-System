@@ -21,11 +21,11 @@
         </a>
         <ul class="nav-links">
           <li><a href="flights.html">Flights</a></li>
-          <li><a href="#" class="is-pending" data-phase="Phase 4">Marketplace</a></li>
+          <li><a href="marketplace.html">Marketplace</a></li>
           <li><a href="tickets.html" aria-current="page">My Tickets</a></li>
           <li><a href="airline.html">Airline</a></li>
           <li><a href="#" class="is-pending" data-phase="Phase 5">Admin</a></li>
-          <li><a href="#" class="is-pending" data-phase="Phase 3">Verify</a></li>
+          <li><a href="verify.html">Verify</a></li>
         </ul>
         <div class="nav-right">
           <span class="pill pill-idle" data-role="network">Checking network…</span>
@@ -47,6 +47,8 @@
     </div>
 
     <div id="page-notices" class="stack mb-0"></div>
+    <div id="cancel-result" class="stack mb-0" hidden></div>
+    <div id="tx-progress" class="mt-3" hidden></div>
 
     <section aria-labelledby="active-title">
       <div class="section-head"><h2 id="active-title">Active</h2></div>
@@ -60,17 +62,27 @@
 
     <section class="card mt-5" aria-labelledby="history-title">
       <div class="card-title">
-        <h2 id="history-title">Purchase history</h2>
-        <span class="xsmall muted">Events read directly from the chain</span>
+        <h2 id="history-title">Transaction history</h2>
+        <div class="row">
+          <span class="xsmall muted" id="history-count"></span>
+          <label class="xsmall muted" for="history-filter">Filter</label>
+          <select id="history-filter" aria-label="Filter transaction history">
+            <option value="all">All events</option>
+            <option value="booking">Bookings</option>
+            <option value="cancel">Cancellations</option>
+            <option value="refund">Refunds</option>
+            <option value="listing">Listings</option>
+            <option value="sale">Resales</option>
+          </select>
+        </div>
       </div>
       <div class="table-wrap">
         <table class="stackable">
           <thead>
             <tr>
               <th scope="col">Time</th>
-              <th scope="col">Flight</th>
-              <th scope="col">Ticket</th>
-              <th scope="col">Metadata</th>
+              <th scope="col">Event</th>
+              <th scope="col">Details</th>
               <th scope="col">Transaction</th>
             </tr>
           </thead>
@@ -85,6 +97,7 @@
   </footer>
 
   <script src="assets/vendor/ethers.umd.min.js"></script>
+  <script src="assets/vendor/qrcode.js"></script>
   <script src="assets/js/contracts-config.js"></script>
   <script src="assets/js/app-config.js"></script>
   <script src="assets/js/ui.js"></script>

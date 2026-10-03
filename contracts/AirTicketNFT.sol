@@ -71,6 +71,8 @@ contract AirTicketNFT is ERC721, ERC2981, AccessControl {
     event TicketInvalidated(uint256 indexed tokenId);
     event TicketMarkedUsed(uint256 indexed tokenId);
     event TicketTransferred(uint256 indexed tokenId, address indexed from, address indexed to);
+    event TicketListed(uint256 indexed tokenId);
+    event TicketDelisted(uint256 indexed tokenId);
     event SettlementUpdated(address settlement);
 
     error PlatformPaused__();
@@ -80,6 +82,7 @@ contract AirTicketNFT is ERC721, ERC2981, AccessControl {
     error EmptyCid__();
     error DirectTransferBlocked__();
     error NotIssued__state(TicketState state);
+    error NotListed__state(TicketState state);
     error TerminalState__state(TicketState state);
     error NotFlightAirline__caller(address caller);
     error FlightCancelled__id(uint256 flightId);
@@ -186,6 +189,27 @@ contract AirTicketNFT is ERC721, ERC2981, AccessControl {
         t.owner = to;
         t.lastTransferAt = block.timestamp;
         emit TicketTransferred(tokenId, from, to);
+    }
+
+    /// @notice Move a ticket `Issued` -> `Listed` (marketplace only; blocked while paused).
+    /// @dev The listing itself lives in TicketMarketplace; this only mirrors the ticket state
+    ///      so the wallet, verifier and `cancel` guard all see one unambiguous badge.
+    function markListed(uint256 tokenId) external onlyRole(MARKETPLACE_ROLE) whenPlatformLive {
+        Ticket storage t = _getTicket(tokenId);
+        if (t.state != TicketState.Issued) revert NotIssued__state(t.state);
+        t.state = TicketState.Listed;
+        emit TicketListed(tokenId);
+    }
+
+    /// @notice Move a ticket `Listed` -> `Issued` (marketplace only).
+    /// @dev Deliberately NOT pause-guarded: withdrawing a listing is a restrictive action, so
+    ///      a seller can always free an expired or unwanted listing and then cancel/refund
+    ///      (same treatment as `cancel` / `markUsed` in the locked pause matrix).
+    function markUnlisted(uint256 tokenId) external onlyRole(MARKETPLACE_ROLE) {
+        Ticket storage t = _getTicket(tokenId);
+        if (t.state != TicketState.Listed) revert NotListed__state(t.state);
+        t.state = TicketState.Issued;
+        emit TicketDelisted(tokenId);
     }
 
     /// @notice Display-only royalty mirroring the flight's stored royaltyBps (marketplace math is authoritative).

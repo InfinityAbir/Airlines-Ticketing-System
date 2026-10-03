@@ -67,6 +67,20 @@
     return new ethers.Contract(config.addresses[name], config.abis[name], state.provider);
   }
 
+  // Wallet-less read path (FR-31: the public verifier needs no injected wallet).
+  let publicProvider = null;
+  function readPublic(name) {
+    if (configMissing()) throw new Error("contracts-config.js missing — run the deploy script first.");
+    if (!publicProvider) {
+      publicProvider = new ethers.JsonRpcProvider(
+        APP_CONFIG.rpcUrl,
+        Number(config.chainId),
+        { cacheTimeout: -1 }
+      );
+    }
+    return new ethers.Contract(config.addresses[name], config.abis[name], publicProvider);
+  }
+
   async function write(name) {
     if (configMissing()) throw new Error("contracts-config.js missing — run the deploy script first.");
     if (!hasInjectedWallet()) throw new Error("No EVM wallet detected in this browser.");
@@ -328,6 +342,7 @@
     ensureChain,
     requireWrite,
     read,
+    readPublic,
     write,
     allContracts,
     hasInjectedWallet,

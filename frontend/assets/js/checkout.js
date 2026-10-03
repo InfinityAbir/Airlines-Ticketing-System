@@ -105,9 +105,13 @@
       const registry = Wallet.read("AirlineRegistry");
       const settlement = Wallet.read("TicketSettlement");
 
+      // Mirrors `whenPlatformLive`: settlement reverts on `paused() || registry.paused()`.
       [flight, platformPaused] = await Promise.all([
         inventory.getFlight(flightId).catch(() => null),
-        registry.paused().catch(() => false),
+        Promise.all([
+          registry.paused().catch(() => false),
+          settlement.paused().catch(() => false),
+        ]).then(([r, s]) => r || s),
       ]);
       if (!flight) {
         setNotice(
@@ -241,7 +245,9 @@
       const res = await fetch(APP_CONFIG.uploadEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "ticket-metadata.json", content: body }),
+        // The endpoint takes the metadata document itself (upload.js POST contract);
+        // the { name, content } shape is only the server-to-provider envelope.
+        body,
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`upload endpoint responded ${res.status}`);

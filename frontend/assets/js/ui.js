@@ -238,7 +238,7 @@
   const REVERT_TEXT = {
     PlatformPaused__: "The platform is paused by the administrator. Try again after it is unpaused.",
     NotAdmin__caller: "Only the platform administrator can do that.",
-    PaymentMismatch__value: "The payment must exactly match the flight fare.",
+    PaymentMismatch__value: "The payment must exactly match the fare or the listed resale price.",
     EmptyCid__: "Ticket metadata is missing an upload reference.",
     InvalidCid__: "The metadata reference (CID) is not in a valid format.",
     SalesOpen__closed: "Sales are closed for this flight (draft or paused).",
@@ -268,6 +268,21 @@
     UnauthorizedCaller__caller: "This action is restricted to the settlement and marketplace contracts.",
     AccessControlUnauthorizedAccount: "Your wallet does not have permission for this action.",
     UnknownListing__id: "That listing does not exist.",
+    ListingNotActive__id: "That listing has already been sold or withdrawn.",
+    ListingExpired__expiresAt: "That listing has expired and can no longer be bought.",
+    NotSeller__caller: "Only the wallet that created this listing can withdraw it.",
+    AlreadyListed__tokenId: "This ticket is already listed for resale.",
+    InvalidState__state: "This ticket is not in a state that allows that action.",
+    SellerMismatch__seller: "The ticket is no longer owned by the wallet that listed it.",
+    ResaleCapExceeded__price: "The asking price may not exceed 120% of the original fare.",
+    ExpiryPastCheckin__expiresAt: "A listing must expire at least 2 hours before departure.",
+    ExpiryInPast__expiresAt: "The listing expiry must be in the future.",
+    ZeroPrice__: "Enter a resale price greater than zero.",
+    NotTicketOwner__caller: "Only the wallet that owns this ticket can do that.",
+    RefundDeadlinePassed__deadline: "The refund deadline for this ticket has passed.",
+    NothingToWithdraw__: "There is no withdrawable revenue for this wallet yet.",
+    RefundNotCovered__: "This balance is still reserved for possible ticket refunds.",
+    TransferFailed__receiver: "The refund transfer could not be delivered.",
   };
 
   function revertMessage(err, contracts) {
@@ -291,8 +306,11 @@
       }
     }
     const msg = err?.shortMessage || err?.message || String(err);
+    // shortMessage is generic for custom errors ("unknown custom error"); the decoded
+    // name lives in message, so scan both before falling back to wording rules.
+    const haystack = `${msg} ${err?.message || ""}`;
     for (const [name, text] of Object.entries(REVERT_TEXT)) {
-      if (msg.includes(name)) return text;
+      if (haystack.includes(name)) return text;
     }
     if (/user (rejected|denied)/i.test(msg)) return "Transaction was rejected in the wallet.";
     if (/insufficient funds/i.test(msg)) return "This wallet does not have enough test ETH.";
@@ -343,6 +361,93 @@
     const source = cidSource(cid);
     const cls = source === "IPFS" ? "badge-info" : "badge-warn";
     return `<span class="badge ${cls}">${source}</span>`;
+  }
+
+  // ---- Public CID verification (FR-18) — shared by the wallet and the verifier page ----
+  function fetchWithTimeout(url, ms) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+  }
+
+  /// @notice Re-derive the fingerprint from retrieved metadata and compare with the on-chain CID.
+  /// @param cid Metadata CID recorded on the ticket.
+  /// @returns {Promise<{cls: string, text: string}>} badge class + human wording.
+  async function verifyCid(cid) {
+    if (String(cid).startsWith("mock")) {
+      return {
+        cls: "tick-warn",
+        text: "mock fallback — metadata was kept locally at purchase; nothing to fetch from IPFS",
+      };
+    }
+    try {
+      const res = await fetchWithTimeout(
+        `${APP_CONFIG.ipfsGateway}${cid}`,
+        APP_CONFIG.metadataFetchTimeoutMs
+      );
+      if (!res.ok) throw new Error(`gateway responded ${res.status}`);
+      const text = await res.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error("retrieved content is not JSON");
+      }
+      const stored = parsed.fingerprint;
+      if (!stored) {
+        return { cls: "tick-warn", text: "metadata retrieved but carries no fingerprint" };
+      }
+      const copy = { ...parsed };
+      delete copy.fingerprint;
+      const recomputed = fingerprint(JSON.stringify(copy));
+      return recomputed === stored
+        ? { cls: "tick-ok", text: "IPFS metadata retrieved · fingerprint matches on-chain CID" }
+        : { cls: "tick-bad", text: "metadata fingerprint mismatch — content altered after upload" };
+    } catch (err) {
+      console.warn("CID verification failed", err);
+      return {
+        cls: "tick-warn",
+        text: "gateway unreachable — CID recorded on-chain, metadata not retrievable right now",
+      };
+    }
+  }
+
+  // ---- QR deep link (D-21: vendored qrcode-generator 2.0.4, MIT; no external service) ----
+  /// @notice PNG data URL for `verify.html?ticketId=…`; null when the vendor bundle is absent.
+  function qrDataUrl(text, cellSize = 4, margin = 2) {
+    if (typeof window.qrcode !== "function") return null;
+    try {
+      const qr = window.qrcode(0, "M"); // 0 = smallest type that fits the payload
+      qr.addData(String(text));
+      qr.make();
+      return qr.createDataURL(cellSize, margin);
+    } catch (err) {
+      console.warn("QR generation failed", err);
+      return null;
+    }
+  }
+
+  /// @notice Verification deep link for a ticket (canonical form used by cards and QR codes).
+  function verifyLink(tokenId) {
+    return `verify.html?ticketId=${encodeURIComponent(String(tokenId))}`;
+  }
+
+  // ---- Transaction history renderer (DESIGN §6 `txHistory`) ----
+  function txHistoryRows(rows, emptyMessage, colSpan = 4) {
+    if (!rows || rows.length === 0) {
+      return `<tr><td colspan="${colSpan}" class="empty-state">${escapeHtml(emptyMessage)}</td></tr>`;
+    }
+    return rows
+      .map(
+        (r) => `
+        <tr>
+          <td data-label="Time">${r.time}</td>
+          <td data-label="Event">${r.badge}</td>
+          <td data-label="Details">${r.details}</td>
+          <td data-label="Transaction"><span class="mono xsmall">${escapeHtml(shortHash(r.hash))}</span></td>
+        </tr>`
+      )
+      .join("");
   }
 
   // ---- Pending-phase links (pages that arrive in later phases must not 404) ----
@@ -404,6 +509,10 @@
     mockCidFor,
     cidSource,
     sourceBadge,
+    verifyCid,
+    qrDataUrl,
+    verifyLink,
+    txHistoryRows,
     bindPendingLinks,
     setBusy,
     localInputToUnix,

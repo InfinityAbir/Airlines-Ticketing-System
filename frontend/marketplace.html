@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resale marketplace — Airline Ticketing Prototype</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header>
+    <div class="disclosure-strip">
+      Educational prototype. Test ETH, sample flights, simulated credential check. Not a real booking system.
+    </div>
+    <nav class="navbar" aria-label="Main navigation">
+      <div class="navbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+          </span>
+          Airline Ticketing Prototype
+        </a>
+        <ul class="nav-links">
+          <li><a href="flights.html">Flights</a></li>
+          <li><a href="marketplace.html" aria-current="page">Marketplace</a></li>
+          <li><a href="tickets.html">My Tickets</a></li>
+          <li><a href="airline.html">Airline</a></li>
+          <li><a href="#" class="is-pending" data-phase="Phase 5">Admin</a></li>
+          <li><a href="verify.html">Verify</a></li>
+        </ul>
+        <div class="nav-right">
+          <span class="pill pill-idle" data-role="network">Checking network…</span>
+          <span class="role-chip" data-role="role">Guest</span>
+          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+        </div>
+      </div>
+    </nav>
+    <div class="network-line"><span data-role="network-line">Loading network status…</span></div>
+  </header>
+
+  <main>
+    <div class="section-head">
+      <div>
+        <h1>Resale marketplace</h1>
+        <p class="muted small mb-0">
+          One active listing per ticket, priced at most 120% of the original fare. Every resale splits
+          the payment atomically: seller proceeds plus an airline royalty of up to 10%.
+        </p>
+      </div>
+      <span class="result-count" id="result-count">Loading…</span>
+    </div>
+
+    <div id="page-notices" class="stack mb-0"></div>
+    <div id="buy-result" class="stack mb-0" hidden></div>
+    <div id="tx-progress" class="mt-3" hidden></div>
+
+    <section class="card" aria-label="Listing filters">
+      <div class="filters">
+        <div class="field">
+          <label for="filter-route">Route</label>
+          <input type="text" id="filter-route" placeholder="e.g. JFK" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="filter-max-price">Max price (ETH)</label>
+          <input type="number" id="filter-max-price" min="0" step="0.0001" placeholder="e.g. 0.13">
+        </div>
+        <div class="field">
+          <label for="filter-airline">Airline operator</label>
+          <select id="filter-airline">
+            <option value="">All operators</option>
+          </select>
+        </div>
+        <button type="button" class="btn" id="filter-clear">Clear</button>
+        <button type="button" class="btn btn-ghost" id="refresh-btn">Refresh</button>
+      </div>
+    </section>
+
+    <div class="grid grid-2 mt-4" id="listings-grid" aria-live="polite"></div>
+  </main>
+
+  <footer class="site-footer">
+    Airline Ticketing Prototype — educational demo on a local Hardhat chain. Test ETH only; no real money, bookings, or identity verification.
+  </footer>
+
+  <script src="assets/vendor/ethers.umd.min.js"></script>
+  <script src="assets/js/contracts-config.js"></script>
+  <script src="assets/js/app-config.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/wallet.js"></script>
+  <script src="assets/js/marketplace.js"></script>
+</body>
+</html>

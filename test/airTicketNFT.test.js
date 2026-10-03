@@ -144,3 +144,69 @@ describe("AirTicketNFT (Phase 1)", function () {
     expect(amount).to.equal((salePrice * 500n) / 10000n);
   });
 });
+
+describe("AirTicketNFT listing state (Phase 4)", function () {
+  async function deploy() {
+    const [admin, airline, traveler, market, settlerEOA] = await getSigners();
+    const Registry = await getFactory("AirlineRegistry");
+    const registry = await Registry.deploy(admin.address);
+    await registry.waitForDeployment();
+    const Inventory = await getFactory("FlightInventory");
+    const inventory = await Inventory.deploy(await registry.getAddress(), admin.address);
+    await inventory.waitForDeployment();
+    const NFT = await getFactory("AirTicketNFT");
+    const nft = await NFT.deploy(
+      await registry.getAddress(),
+      await inventory.getAddress(),
+      admin.address
+    );
+    await nft.waitForDeployment();
+    await registry.connect(admin).approveAirline(airline.address);
+    const MARKETPLACE_ROLE = await nft.MARKETPLACE_ROLE();
+    await nft.connect(admin).grantRole(MARKETPLACE_ROLE, market.address);
+    await nft.connect(admin).setSettlement(settlerEOA.address);
+    await nft.connect(settlerEOA).mint(traveler.address, 1, "S-1", "bafy-test-cid-1");
+    return { registry, nft, admin, airline, traveler, market, settlerEOA };
+  }
+
+  it("markListed/markUnlisted are marketplace-only and strictly state-gated", async function () {
+    const { nft, traveler, market } = await deploy();
+    await expectCustomError(
+      nft.connect(traveler).markListed(1),
+      nft,
+      "AccessControlUnauthorizedAccount"
+    );
+    await expectCustomError(
+      nft.connect(traveler).markUnlisted(1),
+      nft,
+      "AccessControlUnauthorizedAccount"
+    );
+
+    // Unlisting an `Issued` ticket is meaningless and must revert.
+    await expectCustomError(nft.connect(market).markUnlisted(1), nft, "NotListed__state");
+
+    const listed = await expectEvent(nft.connect(market).markListed(1), nft, "TicketListed");
+    assert.equal(listed.args.tokenId, 1n);
+    expect((await nft.getTicket(1)).state).to.equal(1n); // Listed
+
+    // Listing it twice is impossible without leaving the Listed state first.
+    await expectCustomError(nft.connect(market).markListed(1), nft, "NotIssued__state");
+
+    const unlisted = await expectEvent(nft.connect(market).markUnlisted(1), nft, "TicketDelisted");
+    assert.equal(unlisted.args.tokenId, 1n);
+    expect((await nft.getTicket(1)).state).to.equal(0n); // Issued
+    await expectCustomError(nft.connect(market).markUnlisted(1), nft, "NotListed__state");
+  });
+
+  it("markListed is pause-blocked; markUnlisted stays available during a pause", async function () {
+    const { registry, nft, admin, market } = await deploy();
+    await registry.connect(admin).pause();
+    await expectCustomError(nft.connect(market).markListed(1), nft, "PlatformPaused__");
+    await registry.connect(admin).unpause();
+
+    await nft.connect(market).markListed(1);
+    await registry.connect(admin).pause();
+    await expectEvent(nft.connect(market).markUnlisted(1), nft, "TicketDelisted");
+    expect((await nft.getTicket(1)).state).to.equal(0n);
+  });
+});

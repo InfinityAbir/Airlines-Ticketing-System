@@ -49,6 +49,12 @@ export async function warpTo(ts) {
   await provider.send("evm_mine", []);
 }
 
+/// @notice Pin the timestamp of the *next* block without mining it first, so the following
+///         transaction is mined exactly at a deadline boundary.
+export async function pinNextTimestamp(ts) {
+  await provider.send("evm_setNextBlockTimestamp", [ts]);
+}
+
 function revertData(err) {
   const candidates = [err?.data, err?.error?.data, err?.info?.error?.data, err?.value?.data];
   return candidates.find((d) => typeof d === "string" && d.startsWith("0x"));
@@ -112,4 +118,37 @@ export async function expectEvent(promise, contract, name) {
     if (parsed && parsed.name === name) return parsed;
   }
   throw new AssertionError({ message: `expected event ${name} in receipt` });
+}
+
+/// @notice White-box test helper: force a ticket's stored `state` word.
+/// @dev Phase 3 must prove `cancel` rejects `Listed` and `Invalid` tickets, but no contract
+///      path produces those two states until the marketplace (Phase 4) ships. This locates
+///      the `tickets` mapping slot by matching its stored `flightId` word (struct offset 0)
+///      against `ownerOf` (struct offset 2), then writes the `state` word (struct offset 5)
+///      with `hardhat_setStorageAt`. Test-only: no production contract is changed.
+/// @param nftAddress AirTicketNFT address.
+/// @param tokenId Ticket to rewrite.
+/// @param flightId Flight the ticket belongs to (expected word at struct offset 0).
+/// @param owner Expected owner address (expected word at struct offset 2).
+/// @param newState TicketState index to write (2 = Cancelled, 3 = Refunded, 4 = Used, 5 = Invalid, 1 = Listed).
+export async function forceTicketState(nftAddress, tokenId, flightId, owner, newState) {
+  const wantOwner = ethers.getAddress(owner);
+  for (let slot = 0; slot < 48; slot += 1) {
+    const base = BigInt(
+      ethers.solidityPackedKeccak256(["uint256", "uint256"], [tokenId, slot])
+    );
+    const flightWord = await provider.getStorage(nftAddress, base);
+    if (BigInt(flightWord) !== BigInt(flightId)) continue;
+    const ownerWord = await provider.getStorage(nftAddress, base + 2n);
+    if (ethers.getAddress(`0x${ownerWord.slice(-40)}`) !== wantOwner) continue;
+    await provider.send("hardhat_setStorageAt", [
+      nftAddress,
+      ethers.zeroPadValue(ethers.toBeHex(base + 5n), 32),
+      ethers.zeroPadValue(ethers.toBeHex(newState), 32),
+    ]);
+    return;
+  }
+  throw new AssertionError({
+    message: `could not locate the tickets mapping slot for token ${tokenId}`,
+  });
 }

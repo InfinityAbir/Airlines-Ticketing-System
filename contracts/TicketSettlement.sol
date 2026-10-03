@@ -32,6 +32,9 @@ interface ISettlementInventory {
 
     function getFlight(uint256 flightId) external view returns (Flight memory);
     function reserveSeat(uint256 flightId) external;
+    /// @notice Return one seat to the flight's free pool (re-issue after cancellation).
+    /// @param flightId Flight whose seat is released.
+    function releaseSeat(uint256 flightId) external;
 }
 
 /// @notice Ticket views consumed by settlement (struct/enum mirror AirTicketNFT).
@@ -61,22 +64,28 @@ interface ISettlementTicketNFT {
         string calldata seatReference,
         string calldata cid
     ) external returns (uint256);
+    /// @notice Move a ticket to its terminal Cancelled state (settlement-only on the NFT).
+    /// @param tokenId Ticket being cancelled.
+    function invalidateAsCancelled(uint256 tokenId) external;
     function getTicket(uint256 tokenId) external view returns (Ticket memory);
 }
 
 /// @title TicketSettlement — purchase, cancellation, refund, airline revenue (R1).
-/// @notice Phase 2 implements `purchase(flightId, cid)` (exact-value payment, one seat per
-///         transaction, auto `S-<n>` seat, CID record, per-airline revenue credit) and the
-///         `calculateRefund(tokenId)` preview view. Full `cancel` + `withdrawAirlineBalance`
-///         land in Phase 3.
+/// @notice `purchase(flightId, cid)` (exact-value payment, one seat per transaction, auto
+///         `S-<n>` seat, CID record, per-airline revenue credit), the `calculateRefund(tokenId)`
+///         preview view, `cancel(tokenId)` (policy refund to the ticket owner) and
+///         `withdrawAirlineBalance()` (per-airline pull) are implemented.
 /// @dev Accounting model: `purchase` credits the full fare to `airlineBalances[airline]`;
-///      Phase 3 `cancel` debits the refunded portion, so the airline nets `price - refund`
-///      (ARCHITECTURE.md §4.4). The contract holds the ETH; refunds pay out of this balance.
+///      `cancel` debits the refunded portion, so the airline nets `price - refund`
+///      (ARCHITECTURE.md §4.4). The refundable portion of every live ticket is mirrored in
+///      `refundReserve[airline]` and stays locked while the ticket is cancellable, so the
+///      contract can always fund a refund (withdrawals pay `balance - reserve` only).
 ///      Seat numbers are allocated from a per-flight pool: first-come `S-1, S-2, …`, and
-///      numbers vacated by a later Phase 3 cancellation are re-issued before new numbers,
-///      so a seat number is never duplicated and never exceeds the flight's capacity.
+///      numbers vacated by a cancellation are re-issued before new numbers, so a seat number
+///      is never duplicated and never exceeds the flight's capacity.
 ///      Local Pausable is inherited for defense-in-depth; blocked entry points revert when
-///      EITHER the local pause OR the registry platform pause is active.
+///      EITHER the local pause OR the registry platform pause is active. `cancel` and
+///      `withdrawAirlineBalance` are deliberately not pause-guarded (ARCHITECTURE.md §9).
 contract TicketSettlement is Pausable, ReentrancyGuard {
     using Strings for uint256;
 
@@ -92,14 +101,17 @@ contract TicketSettlement is Pausable, ReentrancyGuard {
 
     /// @notice Accrued test-ETH per airline (full fare at purchase; refund debited at cancel).
     mapping(address => uint256) public airlineBalances;
+    /// @notice Refundable portion of that airline's live tickets; withheld from withdrawal so
+    ///         a later cancellation is always fundable (released when the ticket cancels).
+    mapping(address => uint256) public refundReserve;
     /// @notice Highest seat number ever issued per flight.
     mapping(uint256 => uint256) public seatsIssued;
-    /// @notice Seat numbers vacated by cancellation and awaiting re-issue (Phase 3 releases).
+    /// @notice Seat numbers vacated by cancellation and awaiting re-issue.
     mapping(uint256 => uint256[]) private vacatedSeats;
-    /// @notice tokenId -> seat number (kept as a number so Phase 3 can free it exactly).
+    /// @notice tokenId -> seat number (kept as a number so a cancellation can free it exactly).
     mapping(uint256 => uint256) public seatNumberByToken;
 
-    // Events for the Phase 2/3 implementations (declared now so dashboards can rely on shapes).
+    // Events (declared with the Phase 2/3 implementations so dashboards can rely on shapes).
     event PurchaseCompleted(uint256 indexed flightId, uint256 indexed tokenId, address indexed buyer, string cid);
     event TicketCancelled(uint256 indexed tokenId, address indexed owner);
     event TicketRefunded(uint256 indexed tokenId, uint256 refund, uint256 retained);
@@ -114,6 +126,12 @@ contract TicketSettlement is Pausable, ReentrancyGuard {
     error PaymentMismatch__value(uint256 expected, uint256 sent);
     error EmptyCid__();
     error InvalidCid__();
+    error NotTicketOwner__caller(address caller);
+    error NotIssued__state(uint8 state);
+    error RefundDeadlinePassed__deadline(uint256 deadline);
+    error RefundNotCovered__();
+    error NothingToWithdraw__();
+    error TransferFailed__receiver(address receiver);
 
     modifier whenPlatformLive() {
         if (paused() || registry.paused()) revert PlatformPaused__();
@@ -185,11 +203,79 @@ contract TicketSettlement is Pausable, ReentrancyGuard {
         );
         seatNumberByToken[tokenId] = seatNo;
         airlineBalances[f.airline] += msg.value;
+        // Escrow the refundable part of this fare: it stays withheld from withdrawal until
+        // the ticket cancels (or expires un-cancelled), so a refund is always fundable.
+        refundReserve[f.airline] += (msg.value * f.refundBps) / 10000;
 
         emit PurchaseCompleted(flightId, tokenId, msg.sender, cid);
     }
 
-    /// @notice Refund preview for an issued ticket; matches the Phase 3 cancel formula exactly.
+    /// @notice Cancel an owned `Issued` ticket before the refund deadline and receive the
+    ///         policy refund (FR-21/22/23).
+    /// @dev Guard order: owner → `Issued` state (rejects `Listed`, `Used`, `Cancelled`,
+    ///      `Invalid`, `Refunded`) → flight not departed → at or before `refundDeadline`.
+    ///      Available while the platform is paused so active tickets can always be resolved
+    ///      (ARCHITECTURE.md §9). Effects happen before the refund transfer: the airline's
+    ///      revenue and its matching escrow are debited, the ticket is invalidated to the
+    ///      single terminal `Cancelled`, the seat returns to inventory and its number is
+    ///      re-queued; then the refund is paid to the ticket owner (`nonReentrant` + CEI).
+    ///      Emits `TicketCancelled` and `TicketRefunded(tokenId, refund, retained)`; the
+    ///      transaction hash comes from the wallet receipt, never from this contract (D-16).
+    /// @param tokenId Ticket to cancel.
+    function cancel(uint256 tokenId) external nonReentrant {
+        ISettlementTicketNFT.Ticket memory t = ISettlementTicketNFT(ticketNFT).getTicket(tokenId);
+        if (t.owner != msg.sender) revert NotTicketOwner__caller(msg.sender);
+        if (t.state != ISettlementTicketNFT.TicketState.Issued) {
+            revert NotIssued__state(uint8(t.state));
+        }
+
+        ISettlementInventory.Flight memory f = ISettlementInventory(inventory).getFlight(t.flightId);
+        if (f.departed) revert FlightDeparted__id(t.flightId);
+        if (block.timestamp > f.refundDeadline) revert RefundDeadlinePassed__deadline(f.refundDeadline);
+
+        uint256 price = f.priceWei;
+        uint256 refund = (price * f.refundBps) / 10000;
+        uint256 retained = price - refund;
+        if (airlineBalances[f.airline] < refund || refundReserve[f.airline] < refund) {
+            revert RefundNotCovered__();
+        }
+
+        // Effects (revenue debit + escrow release keep `balance >= reserve` invariant).
+        airlineBalances[f.airline] -= refund;
+        refundReserve[f.airline] -= refund;
+        ISettlementTicketNFT(ticketNFT).invalidateAsCancelled(tokenId);
+        ISettlementInventory(inventory).releaseSeat(t.flightId);
+        vacatedSeats[t.flightId].push(seatNumberByToken[tokenId]);
+
+        if (refund > 0) {
+            (bool ok, ) = msg.sender.call{value: refund}("");
+            if (!ok) revert TransferFailed__receiver(msg.sender);
+        }
+
+        emit TicketCancelled(tokenId, msg.sender);
+        emit TicketRefunded(tokenId, refund, retained);
+    }
+
+    /// @notice Pull this airline's accrued revenue (D-11: per-airline, pull-only, never
+    ///         cross-airline — the caller can only ever move its own `airlineBalances`).
+    /// @dev Pays `airlineBalances[caller] - refundReserve[caller]`: the refundable portion of
+    ///      live tickets stays in the contract so those cancellations remain fundable. Not
+    ///      pause-guarded — it moves an airline's own revenue and touches no ticket state.
+    function withdrawAirlineBalance() external nonReentrant {
+        uint256 accrued = airlineBalances[msg.sender];
+        uint256 reserved = refundReserve[msg.sender];
+        if (accrued < reserved) revert RefundNotCovered__();
+        uint256 amount = accrued - reserved;
+        if (amount == 0) revert NothingToWithdraw__();
+
+        airlineBalances[msg.sender] = reserved;
+        (bool ok, ) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed__receiver(msg.sender);
+
+        emit AirlineWithdrawn(msg.sender, amount);
+    }
+
+    /// @notice Refund preview for an issued ticket; matches the `cancel` formula exactly.
     /// @dev Returns `(0, price)` when cancellation is not currently eligible: ticket is not
     ///      `Issued`, the refund deadline has passed (allowed at or before `refundDeadline`),
     ///      or the flight has departed. Reads stay available while paused.

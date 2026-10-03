@@ -1,6 +1,7 @@
-// airline.html — flight creation (FR-08 client validation + on-chain re-checks) and
-// inventory actions: publish / pause sales / cancel / mark departed. Royalty metrics for
-// resales arrive with the marketplace in Phase 4.
+// airline.html — flight creation (FR-08 client validation + on-chain re-checks),
+// inventory actions: publish / pause sales / cancel / mark departed, revenue
+// withdrawal (available = credited - refund escrow, D-20) and Phase 4 resale
+// royalty metrics (ListingSold events whose flight belongs to this wallet).
 (function () {
   "use strict";
 
@@ -14,13 +15,28 @@
   const inventoryHint = document.getElementById("inventory-hint");
   const form = document.getElementById("create-form");
   const createBtn = document.getElementById("create-btn");
+  const withdrawCard = document.getElementById("withdraw-card");
+  const wdCredited = document.getElementById("wd-credited");
+  const wdReserved = document.getElementById("wd-reserved");
+  const wdAvailable = document.getElementById("wd-available");
+  const withdrawBtn = document.getElementById("withdraw-btn");
+  const withdrawHint = document.getElementById("withdraw-hint");
+  const withdrawResult = document.getElementById("withdraw-result");
+  const resaleBody = document.getElementById("resale-body");
+  const resaleHint = document.getElementById("resale-hint");
+  const statResales = document.getElementById("stat-resales");
+  const statRoyalty = document.getElementById("stat-royalty");
+  const statResaleGross = document.getElementById("stat-resale-gross");
 
   let approved = false;
   let platformPaused = false;
   let ownFlights = [];
   let accruedWei = 0n;
+  let reservedWei = 0n;
+  let availableWei = 0n;
   let limits = { maxRoyaltyBps: 1000, maxRefundBps: 10000 };
   let loading = false;
+  let withdrawing = false;
 
   function setNotice(html) {
     notices.innerHTML = html || "";
@@ -266,6 +282,83 @@
       ? '<span class="badge badge-ok">Approved</span>'
       : '<span class="badge badge-idle">Pending</span>';
     statsRow.hidden = false;
+    renderWithdraw();
+  }
+
+  // ---- Revenue withdrawal (per-airline pull, D-11; escrow withheld, D-20) ----
+
+  function renderWithdraw() {
+    availableWei = accruedWei > reservedWei ? accruedWei - reservedWei : 0n;
+    wdCredited.innerHTML = UI.ethFormat(accruedWei);
+    wdReserved.innerHTML = UI.ethFormat(reservedWei);
+    wdAvailable.innerHTML = UI.ethFormat(availableWei);
+    withdrawCard.hidden = false;
+
+    if (availableWei > 0n) {
+      withdrawBtn.disabled = false;
+      withdrawBtn.title = "";
+      withdrawHint.textContent =
+        "Pays the available balance to this wallet. Reserved refunds stay in the contract.";
+    } else {
+      withdrawBtn.disabled = true;
+      withdrawBtn.title = "Nothing to withdraw";
+      withdrawHint.textContent =
+        accruedWei > 0n
+          ? "Everything credited is still reserved for possible ticket refunds."
+          : "No revenue has accrued for this wallet yet.";
+    }
+  }
+
+  async function onWithdraw() {
+    if (withdrawing || availableWei === 0n) return;
+    const confirmed = await UI.confirmModal({
+      title: "Withdraw accrued revenue?",
+      body:
+        `<p>You will receive <strong>${UI.ethText(availableWei)} ETH</strong> of available revenue.` +
+        ` ${UI.ethText(reservedWei)} ETH stays reserved so ticket refunds remain fundable.</p>` +
+        `<p class="xsmall muted mb-0">Only this wallet's own balance can be withdrawn.</p>`,
+      confirmText: "Withdraw revenue",
+      danger: false,
+    });
+    if (!confirmed) return;
+    if (!(await Wallet.requireWrite())) return;
+
+    withdrawing = true;
+    UI.setBusy(withdrawBtn, true, "Withdrawing…");
+    withdrawResult.hidden = true;
+    try {
+      const settlement = await Wallet.write("TicketSettlement");
+      const tx = await settlement.withdrawAirlineBalance();
+      const receipt = await tx.wait();
+      if (receipt.status !== 1) throw new Error("transaction reverted");
+
+      let amount = availableWei;
+      for (const log of receipt.logs) {
+        try {
+          const parsed = settlement.interface.parseLog(log);
+          if (parsed && parsed.name === "AirlineWithdrawn") amount = parsed.args.amount;
+        } catch {
+          /* log from another contract */
+        }
+      }
+
+      withdrawResult.hidden = false;
+      withdrawResult.innerHTML = `
+        <div class="notice notice-success" aria-live="polite">
+          <div class="row"><strong>Withdrew ${UI.escapeHtml(UI.ethText(amount))} ETH.</strong>
+            <span class="badge badge-ok">Confirmed</span></div>
+          <div class="tx-hash mt-3">${UI.escapeHtml(receipt.hash)}</div>
+        </div>`;
+      UI.toast("success", `Withdrew ${UI.ethText(amount)} ETH.`, receipt.hash);
+      await load();
+    } catch (err) {
+      console.error("withdrawal failed", err);
+      UI.toast("error", UI.revertMessage(err, Wallet.allContracts()));
+    } finally {
+      withdrawing = false;
+      UI.setBusy(withdrawBtn, false);
+      renderWithdraw();
+    }
   }
 
   function renderInventory() {
@@ -350,6 +443,94 @@
     }
   }
 
+  // ---- Phase 4: resale royalties paid straight to this wallet (FR-10, sibling rule §5.4) ----
+
+  function renderResaleEmpty(message) {
+    resaleBody.innerHTML = `<tr><td colspan="7" class="empty-state">${UI.escapeHtml(message)}</td></tr>`;
+    statResales.textContent = "0";
+    statRoyalty.textContent = UI.ethFormat(0n);
+    statResaleGross.textContent = UI.ethFormat(0n);
+  }
+
+  async function renderResales(address) {
+    if (ownFlights.length === 0) {
+      renderResaleEmpty("No resales on your flights yet.");
+      return;
+    }
+    try {
+      const marketplace = Wallet.read("TicketMarketplace");
+      const nft = Wallet.read("AirTicketNFT");
+      const inventory = Wallet.read("FlightInventory");
+
+      const sold = await marketplace
+        .queryFilter(marketplace.filters.ListingSold())
+        .catch(() => []);
+      if (sold.length === 0) {
+        renderResaleEmpty("No resales on your flights yet.");
+        return;
+      }
+
+      // ListingSold does not carry the airline, so resolve listing → ticket → flight.
+      const ownIds = new Set(ownFlights.map((f) => Number(f.flightId)));
+      const mine = [];
+      for (const e of sold) {
+        try {
+          const listing = await marketplace.getListing(Number(e.args.listingId));
+          const ticket = await nft.getTicket(listing.tokenId);
+          if (!ownIds.has(Number(ticket.flightId))) continue;
+          mine.push({ e, listing, ticket });
+        } catch {
+          /* listing or ticket no longer resolvable */
+        }
+      }
+
+      if (mine.length === 0) {
+        renderResaleEmpty("No resales on your flights yet.");
+        return;
+      }
+
+      mine.sort((a, b) => b.e.blockNumber - a.e.blockNumber);
+      let royaltyTotal = 0n;
+      let grossTotal = 0n;
+      mine.forEach(({ e }) => {
+        royaltyTotal += e.args.royalty;
+        grossTotal += e.args.priceWei;
+      });
+      statResales.textContent = String(mine.length);
+      statRoyalty.innerHTML = UI.ethFormat(royaltyTotal);
+      statResaleGross.innerHTML = UI.ethFormat(grossTotal);
+      resaleHint.textContent =
+        `${mine.length} settled resale${mine.length === 1 ? "" : "s"} · royalty paid directly to this wallet`;
+
+      const blockNumbers = [...new Set(mine.map(({ e }) => e.blockNumber))];
+      const blocks = await Promise.all(
+        blockNumbers.map((bn) => marketplace.runner.provider.getBlock(bn).catch(() => null))
+      );
+      const timeByBlock = new Map(
+        blockNumbers.map((bn, i) => [bn, blocks[i] ? blocks[i].timestamp : null])
+      );
+
+      resaleBody.innerHTML = mine
+        .map(({ e, ticket }) => {
+          const ts = timeByBlock.get(e.blockNumber);
+          return `
+            <tr>
+              <td data-label="Time">${ts ? UI.formatTimestamp(ts) : `block ${e.blockNumber}`}</td>
+              <td data-label="Ticket">#${Number(e.args.tokenId)} <span class="mono xsmall">${UI.escapeHtml(ticket.seatReference)}</span></td>
+              <td data-label="Buyer"><span class="mono">${UI.shortAddress(e.args.buyer)}</span></td>
+              <td data-label="Sale price">${UI.ethFormat(e.args.priceWei)}</td>
+              <td data-label="Royalty">${UI.ethFormat(e.args.royalty)}</td>
+              <td data-label="Seller received">${UI.ethFormat(e.args.sellerProceeds)}</td>
+              <td data-label="Transaction"><span class="mono xsmall">${UI.shortHash(e.transactionHash)}</span></td>
+            </tr>`;
+        })
+        .join("");
+    } catch (err) {
+      console.error(err);
+      renderResaleEmpty("Could not load resale royalty events.");
+    }
+  }
+
   // ---- Load / gating ----
 
   async function load() {
@@ -364,8 +545,10 @@
         );
         createCard.hidden = true;
         statsRow.hidden = true;
+        withdrawCard.hidden = true;
         inventoryBody.innerHTML = '<tr><td colspan="7" class="empty-state">Contracts not loaded.</td></tr>';
         bookingsBody.innerHTML = '<tr><td colspan="6" class="empty-state">Contracts not loaded.</td></tr>';
+        renderResaleEmpty("Contracts not loaded.");
         return;
       }
       if (!Wallet.hasInjectedWallet() || !Wallet.state.address) {
@@ -377,8 +560,10 @@
         if (inline) inline.addEventListener("click", () => Wallet.connect());
         createCard.hidden = true;
         statsRow.hidden = true;
+        withdrawCard.hidden = true;
         inventoryBody.innerHTML = '<tr><td colspan="7" class="empty-state">Wallet not connected.</td></tr>';
         bookingsBody.innerHTML = '<tr><td colspan="6" class="empty-state">Wallet not connected.</td></tr>';
+        renderResaleEmpty("Wallet not connected.");
         return;
       }
       if (!Wallet.isSupportedChain()) {
@@ -389,6 +574,7 @@
         const sw = document.getElementById("inline-switch");
         if (sw) sw.addEventListener("click", () => Wallet.ensureChain());
         createCard.hidden = true;
+        withdrawCard.hidden = true;
         return;
       }
 
@@ -403,7 +589,10 @@
         registry.maxRoyaltyBps(),
         registry.maxRefundBps(),
       ]);
-      accruedWei = await settlement.airlineBalances(address).catch(() => 0n);
+      [accruedWei, reservedWei] = await Promise.all([
+        settlement.airlineBalances(address).catch(() => 0n),
+        settlement.refundReserve(address).catch(() => 0n),
+      ]);
 
       const noticesHtml = [];
       if (platformPaused) {
@@ -441,6 +630,7 @@
       renderStats();
       renderInventory();
       await renderBookings();
+      await renderResales(address);
     } catch (err) {
       console.error(err);
       setNotice(
@@ -457,6 +647,7 @@
 
   form.addEventListener("submit", onCreate);
   inventoryBody.addEventListener("click", onActionClick);
+  withdrawBtn.addEventListener("click", onWithdraw);
 
   // Default the refund deadline to the chosen departure time.
   document.getElementById("f-departure").addEventListener("change", () => {

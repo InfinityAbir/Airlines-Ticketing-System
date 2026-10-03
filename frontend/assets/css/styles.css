@@ -1478,3 +1478,59 @@ td.actions {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* ---- Phase 3: cancellation receipt, public verification, history filter ---- */
+.notice-success {
+  background: var(--ok-soft);
+  border-color: #bfe6d5;
+  color: #0b5c40;
+}
+
+.checklist {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  display: grid;
+  gap: 6px;
+}
+
+.ticket-verify {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+.qr-thumb {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  background: #fff;
+}
+
+.qr-thumb img,
+.qr-thumb-img {
+  display: block;
+  width: 76px;
+  height: 76px;
+}
+
+.qr-thumb-img {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  background: #fff;
+}
+
+.card-title select {
+  min-height: 32px;
+  padding: 4px 8px;
+}
+
+.verify-result .cid-line {
+  flex-wrap: wrap;
+}
