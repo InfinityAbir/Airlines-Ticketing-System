@@ -116,3 +116,15 @@
 - D-17 — `markUsed` sole writer is `AirTicketNFT` (`AIRLINE_ROLE`, own flight, from `departureTime - 2h` onward). Pause blocks creation/publishing, purchase, listing, resale, transfers; `cancel`, `markUsed`, `markDeparted` + reads remain so active tickets resolve safely.
 - D-18 — Marketplace settlement math authoritative; `royaltyInfo` display-only and equal to stored `royaltyBps`.
 - D-19 — Numeric defaults: `maxRoyaltyBps = 1000` (10%); resale cap `priceWei <= originalPrice * 12000/10000` (120%); listing `expiresAt <= departureTime - 2h`, default duration 24h; check-in window 2h; seats auto-assigned `S-<n>`.
+
+## D-23 — Shared deploy/seed library and scripted PRD §15 evaluator (approved 2026-10-04)
+
+- Decision: move deployment, generated-config writing and the deterministic demo dataset into `scripts/lib/stack.js` (`deployStack`, `writeFrontendConfig`, `readFrontendConfig`, `seedDemo`). `scripts/deploy.js` and `scripts/seed.js` become thin wrappers with unchanged output shapes, and `scripts/demo-eval.js` (`npm run eval`, optional `-- --network localhost`) reuses the same functions to deploy in-process and assert all seven PRD §15 steps.
+- Reasoning: the evaluator must prove the exact dataset the UI demo uses; duplicated deployment logic would let the two drift apart. The evaluator prints a `[n/7] PASS/FAIL` checklist, asserts the exact wei split (`royalty + proceeds == price`), the 0.0800/0.0200 refund pair, the seven-field verifier surface and the `FlightDeparted__id` blocks, and exits non-zero on any failure so it can gate CI.
+- Affects: `scripts/`, `package.json`, `scripts/lib/stack.js`, STATUS Phase 6 task 3.
+
+## D-24 — Tracked Playwright E2E with an injected EIP-1193 shim (approved 2026-10-04)
+
+- Decision: `@playwright/test` 1.63.0 drives the real frontend against a Playwright-managed `hardhat node` plus a static server (`playwright.config.js`), with `tests/e2e/helpers/shim.js` injected through `addInitScript` to expose `window.ethereum` over `http://127.0.0.1:8545` (switchable admin/airline/traveler/buyer accounts and a guest mode). Each spec file runs `deployAndSeed()` in `beforeAll`, the four specs run serially on one chain, and key steps capture screenshots into `doc/screenshots/phase6/`.
+- Reasoning: Phases 2-5 used an ad-hoc browser harness kept outside the repo; Phase 6 requires tracked coverage of the user-facing PRD §15 flows. A shim avoids bundling a wallet extension, keeps runs headless and offline-friendly, and makes the whole suite reproducible from a fresh clone with `npm run test:e2e`.
+- Affects: `playwright.config.js`, `tests/e2e/`, `.gitignore`, README, STATUS Phase 6 task 4.

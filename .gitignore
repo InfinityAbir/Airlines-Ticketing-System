@@ -6,6 +6,8 @@ node.log
 *.err.log
 *.out.log
 .playwright-mcp/
+test-results/
+playwright-report/
 Paper/*.pdf
 coverage/
 .env

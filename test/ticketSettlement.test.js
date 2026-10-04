@@ -759,3 +759,27 @@ describe("TicketSettlement cancellation + revenue withdrawal (Phase 3)", functio
     expect(flight.departed).to.equal(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 — coverage close-out for TicketSettlement (PRD §17 metric 2): the
+// remaining admin gate and the unknown-flight guard of the checkout preview.
+// ---------------------------------------------------------------------------
+
+describe("TicketSettlement coverage close-out (Phase 6)", function () {
+  it("unpause is admin-only, exactly like pause", async function () {
+    const { settlement, other } = await deploy();
+    await settlement.pause();
+    await expectCustomError(settlement.connect(other).unpause(), settlement, "NotAdmin__caller");
+    expect(await settlement.paused()).to.equal(true);
+    await settlement.unpause();
+    expect(await settlement.paused()).to.equal(false);
+  });
+
+  it("previewSeatReference rejects an unknown flight before previewing a seat", async function () {
+    const ctx = await deploy();
+    const { flightId } = await publishFlight(ctx, "C6-1");
+    await expectCustomError(ctx.settlement.previewSeatReference(999), [ctx.settlement, ctx.inventory], "UnknownFlight__id");
+    await expectCustomError(ctx.settlement.previewSeatReference(0), [ctx.settlement, ctx.inventory], "UnknownFlight__id");
+    expect(await ctx.settlement.previewSeatReference(flightId)).to.equal("S-1");
+  });
+});

@@ -893,3 +893,46 @@ describe("TicketMarketplace buyListing (Phase 4)", function () {
     expect((await ctx.marketplace.getActiveListings()).length).to.equal(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 — coverage close-out for TicketMarketplace (PRD §17 metric 2): the
+// local unpause gate, which until now was only exercised through the admin path.
+// ---------------------------------------------------------------------------
+
+describe("TicketMarketplace coverage close-out (Phase 6)", function () {
+  it("unpause is admin-only, exactly like pause", async function () {
+    const { marketplace, other } = await deploy();
+    await marketplace.pause();
+    await expectCustomError(marketplace.connect(other).unpause(), marketplace, "NotAdmin__caller");
+    expect(await marketplace.paused()).to.equal(true);
+    await marketplace.unpause();
+    expect(await marketplace.paused()).to.equal(false);
+  });
+
+  it("listing reads stay consistent after the emit-before-flip ordering change", async function () {
+    const ctx = await deploy();
+    const { flightId, tokenId } = await setup(ctx, "C6-M");
+    const expiresAt = (await latest()) + DAY;
+    const ev = await expectEvent(
+      ctx.marketplace.connect(ctx.traveler).list(tokenId, CAP, expiresAt),
+      ctx.marketplace,
+      "ListingCreated"
+    );
+    const listingId = Number(ev.args.listingId);
+    const listing = await ctx.marketplace.getListing(listingId);
+    expect(listing.active).to.equal(true);
+    expect(listing.seller).to.equal(ctx.traveler.address);
+    expect((await ctx.nft.getTicket(tokenId)).state).to.equal(1n); // Listed mirror is consistent
+    expect(await ctx.marketplace.activeListingByToken(tokenId)).to.equal(BigInt(listingId));
+    expect((await ctx.marketplace.getActiveListings()).length).to.equal(1);
+
+    await expectEvent(
+      ctx.marketplace.connect(ctx.traveler).cancelListing(listingId),
+      ctx.marketplace,
+      "ListingCancelled"
+    );
+    expect((await ctx.marketplace.getListing(listingId)).active).to.equal(false);
+    expect((await ctx.nft.getTicket(tokenId)).state).to.equal(0n);
+    expect((await ctx.marketplace.getActiveListings()).length).to.equal(0);
+  });
+});

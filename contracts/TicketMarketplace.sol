@@ -249,8 +249,10 @@ contract TicketMarketplace is Pausable, ReentrancyGuard {
         listing.expiresAt = expiresAt;
         activeListingByToken[tokenId] = listingId;
 
-        IMarketTicketNFT(ticketNFT).markListed(tokenId);
+        // Checks-effects-interactions: record the listing event before the external state flip
+        // (both live in the same transaction, so an NFT revert unwinds the event too).
         emit ListingCreated(listingId, tokenId, msg.sender, priceWei, expiresAt);
+        IMarketTicketNFT(ticketNFT).markListed(tokenId);
     }
 
     /// @notice Withdraw an active listing and return the ticket to `Issued`.
@@ -265,8 +267,8 @@ contract TicketMarketplace is Pausable, ReentrancyGuard {
         listing.active = false;
         delete activeListingByToken[tokenId];
 
-        IMarketTicketNFT(ticketNFT).markUnlisted(tokenId);
         emit ListingCancelled(listingId);
+        IMarketTicketNFT(ticketNFT).markUnlisted(tokenId);
     }
 
     /// @notice Buy an active listing: pay the asking price, receive the ticket (FR-29/30).
@@ -307,6 +309,12 @@ contract TicketMarketplace is Pausable, ReentrancyGuard {
 
         // Interactions — split payment; royalty floors, seller takes the remainder (sum == price).
         if (royalty > 0) {
+            // Trust boundary (reviewed, see doc/STATIC_ANALYSIS.md): the royalty receiver is the
+            // flight's own airline wallet — an operator address approved by the platform admin and
+            // chosen by that same airline when it created the flight. Neither the buyer nor the
+            // seller influences it, exact payment is validated before any value moves, every
+            // listing/ticket effect is already written, and the function is `nonReentrant`.
+            // slither-disable-next-line arbitrary-send-eth
             (bool royaltyOk, ) = f.airline.call{value: royalty}("");
             if (!royaltyOk) revert TransferFailed__receiver(f.airline);
         }
@@ -329,13 +337,13 @@ contract TicketMarketplace is Pausable, ReentrancyGuard {
     /// @dev Expired listings are excluded because they can no longer be bought; the seller still
     ///      sees them as `Listed` in the wallet and withdraws them with `cancelListing`.
     function getActiveListings() external view returns (Listing[] memory items) {
-        uint256 count;
+        uint256 count = 0;
         for (uint256 id = 1; id < nextListingId; id++) {
             Listing storage listing = listings[id];
             if (listing.active && block.timestamp <= listing.expiresAt) count++;
         }
         items = new Listing[](count);
-        uint256 n;
+        uint256 n = 0;
         for (uint256 id = 1; id < nextListingId; id++) {
             Listing storage listing = listings[id];
             if (listing.active && block.timestamp <= listing.expiresAt) items[n++] = listing;

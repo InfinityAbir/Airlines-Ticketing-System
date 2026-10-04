@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Platform administration — Airline Ticketing Prototype</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header>
+    <div class="disclosure-strip">
+      Educational prototype. Test ETH, sample flights, simulated credential check. Not a real booking system.
+    </div>
+    <nav class="navbar" aria-label="Main navigation">
+      <div class="navbar-inner">
+        <a class="brand" href="index.html">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+          </span>
+          Airline Ticketing Prototype
+        </a>
+        <ul class="nav-links">
+          <li><a href="flights.html">Flights</a></li>
+          <li><a href="marketplace.html">Marketplace</a></li>
+          <li><a href="tickets.html">My Tickets</a></li>
+          <li><a href="airline.html">Airline</a></li>
+          <li><a href="admin.html" aria-current="page">Admin</a></li>
+          <li><a href="verify.html">Verify</a></li>
+        </ul>
+        <div class="nav-right">
+          <span class="pill pill-idle" data-role="network">Checking network…</span>
+          <span class="role-chip" data-role="role">Guest</span>
+          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+        </div>
+      </div>
+    </nav>
+    <div class="network-line"><span data-role="network-line">Loading network status…</span></div>
+  </header>
+
+  <main>
+    <div class="section-head">
+      <div>
+        <h1>Platform administration</h1>
+        <p class="muted small mb-0">
+          Approve operators, set platform limits, and trigger emergency pauses. This page can never
+          move a ticket or touch traveler funds — it only governs roles, limits, and pause switches.
+        </p>
+      </div>
+      <span class="result-count" id="platform-pill">Loading…</span>
+    </div>
+
+    <div id="page-notices" class="stack mb-0" role="status" aria-live="polite"></div>
+
+    <div class="grid grid-4" id="stats-row" hidden>
+      <div class="stat">
+        <div class="stat-label">Platform</div>
+        <div class="stat-value" id="stat-platform">—</div>
+        <div class="stat-sub">registry pause switch</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Airlines approved</div>
+        <div class="stat-value" id="stat-airlines">—</div>
+        <div class="stat-sub">operator wallets live now</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Flights</div>
+        <div class="stat-value" id="stat-flights">—</div>
+        <div class="stat-sub">created on-chain</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Tickets minted</div>
+        <div class="stat-value" id="stat-tickets">—</div>
+        <div class="stat-sub">NFT tickets issued</div>
+      </div>
+    </div>
+
+    <section class="card mt-4" id="approvals-card" aria-labelledby="approvals-title" hidden>
+      <div class="card-title">
+        <h2 id="approvals-title">Airline approvals</h2>
+        <span class="xsmall muted">FR-06 — approve, deactivate, reactivate operator wallets</span>
+      </div>
+      <form id="approve-form" novalidate>
+        <div class="filters">
+          <div class="field">
+            <label for="f-wallet">Operator wallet address</label>
+            <input type="text" id="f-wallet" placeholder="0x…" autocomplete="off" spellcheck="false">
+            <span class="hint">0x plus 40 hexadecimal characters</span>
+            <span class="error" data-error-for="f-wallet"></span>
+          </div>
+          <button type="submit" class="btn btn-primary" id="approve-btn">Approve wallet</button>
+        </div>
+      </form>
+      <div class="table-wrap mt-4">
+        <table class="stackable">
+          <thead>
+            <tr>
+              <th scope="col">Wallet</th>
+              <th scope="col">Status</th>
+              <th scope="col">Flights</th>
+              <th scope="col">Last registry event</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="approvals-body"></tbody>
+        </table>
+      </div>
+      <p class="xsmall muted mt-3 mb-0">
+        Approval grants <span class="mono">AIRLINE_ROLE</span> only. Deactivating an operator blocks
+        new flight creation and publishing; flights it already created stay on-chain and remain
+        readable by the public verifier.
+      </p>
+    </section>
+
+    <section class="card mt-4" id="limits-card" aria-labelledby="limits-title" hidden>
+      <div class="card-title">
+        <h2 id="limits-title">Platform limits</h2>
+        <span class="xsmall muted">Prototype-wide caps read by every downstream contract</span>
+      </div>
+      <div class="grid grid-2">
+        <dl class="kv">
+          <dt>Maximum resale royalty</dt>
+          <dd id="limit-royalty-now">—</dd>
+          <dt>Maximum refund rate</dt>
+          <dd id="limit-refund-now">—</dd>
+          <dt>Last updated</dt>
+          <dd id="limit-updated">—</dd>
+        </dl>
+        <form id="limits-form" novalidate>
+          <div class="form-grid">
+            <div class="field">
+              <label for="f-royalty-cap">Max resale royalty (%)</label>
+              <input type="number" id="f-royalty-cap" min="0" max="100" step="0.5">
+              <span class="hint">Caps every flight's royalty — R1 default 10.00%</span>
+              <span class="error" data-error-for="f-royalty-cap"></span>
+            </div>
+            <div class="field">
+              <label for="f-refund-cap">Max refund rate (%)</label>
+              <input type="number" id="f-refund-cap" min="0" max="100" step="5">
+              <span class="hint">Caps every flight's refund policy — R1 default 100.00%</span>
+              <span class="error" data-error-for="f-refund-cap"></span>
+            </div>
+          </div>
+          <div class="mt-4 row-between">
+            <button type="submit" class="btn btn-primary" id="limits-btn">Save limits</button>
+            <span class="xsmall muted">0–100% (0–10000 basis points). The contract rejects anything above 100%.</span>
+          </div>
+        </form>
+      </div>
+      <p class="xsmall muted mt-3 mb-0">
+        Lowering a cap takes effect immediately: a flight whose royalty is now above the cap can no
+        longer be listed for resale until the cap is raised again or the flight is cancelled.
+      </p>
+    </section>
+
+    <section class="card mt-4" id="pause-card" aria-labelledby="pause-title" hidden>
+      <div class="card-title">
+        <h2 id="pause-title">Emergency controls</h2>
+        <span class="xsmall muted">Three independent pause switches — see exactly what each one blocks</span>
+      </div>
+      <div class="notice notice-warn">
+        <strong>Emergency use only.</strong> A pause blocks new activity on the local chain. Ticket
+        cancellation, refunds, boarding (mark used), flight departure, and every read stay available
+        so in-flight tickets can always be resolved.
+      </div>
+      <div class="grid grid-3 mt-4">
+        <div class="stat">
+          <div class="stat-label">Platform pause</div>
+          <div class="stat-value" id="pause-registry">—</div>
+          <div class="stat-sub">AirlineRegistry — flights, booking, resale, transfers</div>
+          <button type="button" class="btn btn-danger btn-sm mt-3" data-pause="registry" id="btn-registry">Pause platform</button>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Booking pause</div>
+          <div class="stat-value" id="pause-settlement">—</div>
+          <div class="stat-sub">TicketSettlement — ticket purchases only</div>
+          <button type="button" class="btn btn-danger btn-sm mt-3" data-pause="settlement" id="btn-settlement">Pause bookings</button>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Resale pause</div>
+          <div class="stat-value" id="pause-marketplace">—</div>
+          <div class="stat-sub">TicketMarketplace — listings and resale purchases</div>
+          <button type="button" class="btn btn-danger btn-sm mt-3" data-pause="marketplace" id="btn-marketplace">Pause resale</button>
+        </div>
+      </div>
+      <div class="table-wrap mt-4">
+        <table class="stackable">
+          <thead>
+            <tr>
+              <th scope="col">Operation</th>
+              <th scope="col">Right now</th>
+              <th scope="col">Blocked by</th>
+            </tr>
+          </thead>
+          <tbody id="pause-matrix-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card mt-4" id="audit-card" aria-labelledby="audit-title">
+      <div class="card-title">
+        <h2 id="audit-title">Audit event feed</h2>
+        <span class="xsmall muted" id="audit-hint">FR-34 — read-only; filters for flight, airline, ticket state and event type</span>
+      </div>
+      <div class="filters">
+        <div class="field">
+          <label for="filter-type">Event type</label>
+          <select id="filter-type">
+            <option value="">All event types</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="filter-flight">Flight</label>
+          <select id="filter-flight">
+            <option value="">All flights</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="filter-airline">Airline</label>
+          <select id="filter-airline">
+            <option value="">All airlines</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="filter-state">Ticket state</label>
+          <select id="filter-state">
+            <option value="">All ticket states</option>
+            <option value="Issued">Issued</option>
+            <option value="Listed">Listed</option>
+            <option value="Cancelled">Cancelled</option>
+            <option value="Used">Used</option>
+            <option value="Invalid">Invalid</option>
+            <option value="none">Not ticket-related</option>
+          </select>
+        </div>
+        <button type="button" class="btn" id="audit-clear">Clear</button>
+        <button type="button" class="btn btn-ghost" id="audit-refresh">Refresh</button>
+      </div>
+      <div class="table-wrap mt-4">
+        <table class="stackable">
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Event</th>
+              <th scope="col">Details</th>
+              <th scope="col">Transaction</th>
+            </tr>
+          </thead>
+          <tbody id="audit-body"></tbody>
+        </table>
+      </div>
+      <p class="xsmall muted mt-3 mb-0">
+        Every row comes straight from contract events — nothing here is stored off-chain, and no
+        passenger data exists on the chain to show (FR-15/FR-32).
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    Airline Ticketing Prototype — educational demo on a local Hardhat chain. Test ETH only; no real money, bookings, or identity verification.
+  </footer>
+
+  <script src="assets/vendor/ethers.umd.min.js"></script>
+  <script src="assets/js/contracts-config.js"></script>
+  <script src="assets/js/app-config.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/wallet.js"></script>
+  <script src="assets/js/admin.js"></script>
+</body>
+</html>

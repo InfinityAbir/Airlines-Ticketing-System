@@ -606,7 +606,7 @@
         noticesHtml.push(
           `<div class="notice notice-info"><strong>Wallet not approved as an airline operator.</strong> ` +
             `Ask the platform administrator to approve <span class="mono">${UI.shortAddress(address, 10, 8)}</span>` +
-            `${isAdmin ? " (you are the administrator — approvals arrive in Phase 5; approve via the test setup for now)" : ""}. ` +
+            `${isAdmin ? " (you are the administrator — approve or reactivate operator wallets from the Admin page)" : ""}. ` +
             "Flight creation requires on-chain approval.</div>"
         );
       }

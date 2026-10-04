@@ -210,3 +210,142 @@ describe("AirTicketNFT listing state (Phase 4)", function () {
     expect((await nft.getTicket(1)).state).to.equal(0n);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 — coverage close-out for AirTicketNFT (PRD §17 metric 2): the wiring
+// guard, the zero-address legs and the wrong-state paths the earlier phases
+// never reached directly on this contract.
+// ---------------------------------------------------------------------------
+
+describe("AirTicketNFT coverage close-out (Phase 6)", function () {
+  async function deploy() {
+    const [admin, airline, traveler, market, settlerEOA] = await getSigners();
+    const Registry = await getFactory("AirlineRegistry");
+    const registry = await Registry.deploy(admin.address);
+    await registry.waitForDeployment();
+    const Inventory = await getFactory("FlightInventory");
+    const inventory = await Inventory.deploy(await registry.getAddress(), admin.address);
+    await inventory.waitForDeployment();
+    const NFT = await getFactory("AirTicketNFT");
+    const nft = await NFT.deploy(
+      await registry.getAddress(),
+      await inventory.getAddress(),
+      admin.address
+    );
+    await nft.waitForDeployment();
+    await registry.connect(admin).approveAirline(airline.address);
+    const dep = (await latest()) + 30 * 24 * 3600;
+    await inventory.connect(airline).createFlight([
+      "NFT-C6",
+      "JFK",
+      "LHR",
+      dep,
+      5,
+      ethers.parseEther("0.1"),
+      dep - 7 * 24 * 3600,
+      8000,
+      500,
+    ]);
+    await nft.connect(admin).setSettlement(settlerEOA.address);
+    return { registry, inventory, nft, admin, airline, traveler, market, settlerEOA, departure: dep };
+  }
+
+  it("constructor and setSettlement enforce the zero-address and admin gates", async function () {
+    const [admin] = await getSigners();
+    const Registry = await getFactory("AirlineRegistry");
+    const registry = await Registry.deploy(admin.address);
+    await registry.waitForDeployment();
+    const Inventory = await getFactory("FlightInventory");
+    const inventory = await Inventory.deploy(await registry.getAddress(), admin.address);
+    await inventory.waitForDeployment();
+    const NFT = await getFactory("AirTicketNFT");
+    await expectCustomError(
+      NFT.deploy(ethers.ZeroAddress, await inventory.getAddress(), admin.address),
+      NFT,
+      "ZeroAddress__account"
+    );
+    const { nft, traveler } = await deploy();
+    await expectCustomError(
+      nft.connect(traveler).setSettlement(traveler.address),
+      nft,
+      "AccessControlUnauthorizedAccount"
+    );
+    await expectCustomError(
+      nft.connect(traveler).setSettlement(ethers.ZeroAddress),
+      nft,
+      "AccessControlUnauthorizedAccount"
+    );
+    await expectCustomError(nft.connect(traveler).grantRole(await nft.MARKETPLACE_ROLE(), traveler.address), nft, "AccessControlUnauthorizedAccount");
+    const { nft: adminNft, admin: nftAdmin } = await deploy();
+    await expectCustomError(
+      adminNft.connect(nftAdmin).setSettlement(ethers.ZeroAddress),
+      adminNft,
+      "ZeroAddress__account"
+    );
+  });
+
+  it("mint rejects a zero-address recipient", async function () {
+    const { nft, settlerEOA } = await deploy();
+    await expectCustomError(
+      nft.connect(settlerEOA).mint(ethers.ZeroAddress, 1, "S-1", "bafy-test-cid-1"),
+      nft,
+      "ZeroAddress__account"
+    );
+    expect(await nft.nextTokenId()).to.equal(1n);
+  });
+
+  it("controlledTransfer rejects terminal tickets and a zero-address recipient", async function () {
+    const { nft, admin, traveler, market, settlerEOA } = await deploy();
+    const signers = await getSigners();
+    const buyer = signers[5];
+    await nft.connect(admin).grantRole(await nft.MARKETPLACE_ROLE(), market.address);
+    await nft.connect(settlerEOA).mint(traveler.address, 1, "S-1", "bafy-test-cid-1");
+
+    await expectCustomError(
+      nft.connect(market).controlledTransfer(traveler.address, ethers.ZeroAddress, 1),
+      nft,
+      "ZeroAddress__account"
+    );
+
+    await nft.connect(settlerEOA).invalidateAsCancelled(1);
+    await expectCustomError(
+      nft.connect(market).controlledTransfer(traveler.address, buyer.address, 1),
+      nft,
+      "TerminalState__state"
+    );
+    expect(await nft.ownerOf(1)).to.equal(traveler.address);
+
+    await expectCustomError(
+      nft.connect(market).controlledTransfer(traveler.address, buyer.address, 99),
+      nft,
+      "UnknownTicket__id"
+    );
+  });
+
+  it("markUsed rejects unknown ids, listed tickets and tickets on a cancelled flight", async function () {
+    const { inventory, nft, airline, traveler, market, settlerEOA } = await deploy();
+    await nft.connect(settlerEOA).mint(traveler.address, 1, "S-1", "bafy-test-cid-1");
+    await expectCustomError(nft.connect(airline).markUsed(99), nft, "UnknownTicket__id");
+
+    // Listed is a non-terminal state, but it is not `Issued`, so boarding is refused.
+    await nft.grantRole(await nft.MARKETPLACE_ROLE(), market.address);
+    await nft.connect(market).markListed(1);
+    await expectCustomError(nft.connect(airline).markUsed(1), nft, "NotIssued__state");
+    await nft.connect(market).markUnlisted(1);
+
+    // A cancelled flight's ticket can never be boarded, even inside the check-in window.
+    await inventory.connect(airline).cancelFlight(1);
+    await expectCustomError(nft.connect(airline).markUsed(1), nft, "FlightCancelled__id");
+    expect((await nft.getTicket(1)).state).to.equal(0n); // still Issued, not silently consumed
+  });
+
+  it("invalidateAsCancelled rejects a listed ticket (state must be Issued)", async function () {
+    const { nft, traveler, market, settlerEOA } = await deploy();
+    await nft.connect(settlerEOA).mint(traveler.address, 1, "S-1", "bafy-test-cid-1");
+    await nft.grantRole(await nft.MARKETPLACE_ROLE(), market.address);
+    await nft.connect(market).markListed(1);
+    await expectCustomError(nft.connect(settlerEOA).invalidateAsCancelled(1), nft, "NotIssued__state");
+    expect((await nft.getTicket(1)).state).to.equal(1n); // still Listed
+    await expectCustomError(nft.connect(settlerEOA).invalidateAsCancelled(99), nft, "UnknownTicket__id");
+  });
+});

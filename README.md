@@ -110,16 +110,19 @@ This is also my exploration of production-grade Solidity patterns: OpenZeppelin 
 - `withdrawAirlineBalance` per airline — never cross-airline, always `nonReentrant`
 - Marketplace settlement math is authoritative for all seller/royalty splits: `list(tokenId, priceWei, expiresAt)` → `buyListing` pays the airline royalty straight to its wallet and the remainder to the seller in one atomic tx (`royalty + proceeds == price`), with a 120%-of-fare price cap and an expiry no later than departure − 2h (Phase 4)
 
-### 5. Deployment & Verification
+### 5. Admin Console (`admin.html`) — Phase 5
+
+- Airline approvals (approve / deactivate / reactivate), platform limits form, three independent emergency pauses with a nine-row live coverage matrix
+- FR-34 audit feed: one bounded `getLogs` scan across all five contracts with type / flight / airline / state filters and a transaction hash on every row
+- Guests get a public read-only view; non-admin wallets get a read-only notice; the page can never move a ticket or transfer ETH
+
+### 6. Deployment, Evaluation & Verification
 
 - `npm run deploy` writes `frontend/assets/js/contracts-config.js` (chainId + 5 addresses, git-ignored)
 - `npm run seed` approves one airline and publishes the sample flight `R1-DEMO-001`
-- 88 unit tests cover role gates, validation rejections, the pause matrix, purchase, cancellation, and the full resale split
-
-### Remaining (Phases 5–6)
-
-- Admin console with approvals, limits, pause, and filtered audit feed
-- Quality gates: coverage, static-analysis hardening, deterministic demo script
+- `npm run eval` deploys in-process and asserts every PRD §15 step (7/7) with exact-wei accounting
+- 110 unit tests cover role gates, validation rejections, the pause matrix, purchase, cancellation, the full resale split, and the failure path of every public state-changing function
+- `npm run test:e2e` runs the tracked Playwright suite over the real frontend (21 tests, 4 specs)
 
 ---
 
@@ -232,20 +235,39 @@ npx serve frontend          # or any static file server on frontend/
 node server/upload.js       # protected IPFS endpoint (mock CID fallback when unconfigured)
 ```
 
-Open `http://localhost:3000` (or your server's port), connect a wallet on chain 31337, and the full path works end to end: browse → book → My Tickets → list for resale → marketplace → buy → airline royalty metrics.
+Open `http://localhost:3000` (or your server's port), connect a wallet on chain 31337, and the full path works end to end: browse → book → My Tickets → list for resale → marketplace → buy → airline royalty metrics → cancel for a policy refund.
+
+**Deterministic demo / evaluator** (deploys its own stack, no running node required):
+
+```bash
+npm run eval                        # PRD §15, 7/7 steps, exits non-zero on failure
+npm run eval -- --network localhost # same assertions against the running demo chain
+```
+
+> `npm run eval` writes `contracts-config.js` for the deployment it evaluates. For a UI demo afterwards, re-run `npm run deploy -- --network localhost` + `npm run seed -- --network localhost`.
+
+**Browser end-to-end suite** (starts its own node, server, and frontend):
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e                  # 21 tests across 4 specs
+```
 
 ---
 
 ## Quality Gates
 
-Every phase must pass all four before it is marked complete in `doc/STATUS.md`:
+Every phase must pass these before it is marked complete in `doc/STATUS.md`:
 
 | Gate | Command | Latest result |
 |---|---|---|
 | Compile | `npm run compile` | 5 files, solc 0.8.28, cancun |
-| Tests | `npm test` | 88/88 passing |
+| Tests | `npm test` | 110/110 passing |
 | Lint | `npm run lint` | 0 errors (306 warnings = baseline) |
 | Secret scan | `npm run scan` | clean |
+| Static analysis | Slither 0.11.5 | **0 High / 0 Medium** (19 findings dispositioned in `doc/STATIC_ANALYSIS.md`) |
+| PRD §15 evaluator | `npm run eval` | 7/7 steps PASS |
+| Browser E2E | `npm run test:e2e` | 21 passed |
 
 > Never commit API keys, provider tokens, private keys, or seed phrases. IPFS provider credentials live only in `server/.env` (git-ignored) — never in frontend code.
 
@@ -271,15 +293,26 @@ Airlines-Ticketing-System/
 ├── scripts/
 │   ├── deploy.js                  # deploys 5 contracts, writes config
 │   ├── seed.js                    # approves airline, publishes sample flight
+│   ├── demo-eval.js               # PRD §15 evaluator (npm run eval), 7/7 checks
+│   ├── lib/stack.js               # shared deploy / config / seed dataset
 │   ├── run-tests.js               # npm test orchestrator (node + mocha)
 │   └── scan-secrets.js            # credential leak scanner
-├── frontend/                     # index, flights, checkout, tickets, marketplace, airline, verify
+├── tests/e2e/                     # tracked Playwright suite (npm run test:e2e)
+│   ├── 01-public.spec.js          # guest reads, verification, responsive/a11y
+│   ├── 02-journey.spec.js         # PRD §15 journey, serial on one chain
+│   ├── 03-admin.spec.js           # role gating, approvals, limits, pause matrix
+│   ├── 04-polish.spec.js          # 375px layout, labels, aria-live, console clean
+│   └── helpers/                   # EIP-1193 shim, static server, fixtures
+├── frontend/                     # index, flights, checkout, tickets, marketplace, airline, admin, verify
 │   └── assets/{js,css,vendor}/    # shared wallet/UI layer, ABIs, vendored ethers + QR
 ├── server/.env.example            # protected IPFS upload endpoint (Phase 2)
 ├── doc/                           # PRD, architecture, design, status, decisions
-│   └── screenshots/{phase2..4}/   # per-phase browser verification captures
+│   ├── STATIC_ANALYSIS.md         # Slither report + dispositions (Phase 6)
+│   ├── MANUAL_TESTING_CHECKLIST.md# final manual verification (Step 10)
+│   └── screenshots/{phase2..6}/   # per-phase browser verification captures
 ├── Paper/                         # IEEE paper (LaTeX)
 ├── hardhat.config.js
+├── playwright.config.js
 ├── .solhint.json
 └── README.md
 ```
@@ -294,6 +327,8 @@ Airlines-Ticketing-System/
 - `doc/STATUS.md` — phase-by-phase implementation progress (source of truth)
 - `doc/DECISIONS.md` — locked technical decisions (R1 defaults)
 - `doc/CONVENTIONS.md` — coding and testing conventions
+- `doc/STATIC_ANALYSIS.md` — Slither report, dispositions, and the suppression policy
+- `doc/MANUAL_TESTING_CHECKLIST.md` — final manual verification scenarios (workflow Step 10)
 - `doc/FEEDBACK.md` — review notes
 
 ---
@@ -305,8 +340,8 @@ Airlines-Ticketing-System/
 - [x] **Phase 2** — Booking flow, protected IPFS upload, airline creation UI, ticket wallet
 - [x] **Phase 3** — Cancellation + refunds, use/boarding, public verification page
 - [x] **Phase 4** — Marketplace list/buy and royalty distribution
-- [ ] **Phase 5** — Admin console, audit feed, emergency controls UI
-- [ ] **Phase 6** — Quality gates, static analysis hardening, demo readiness
+- [x] **Phase 5** — Admin console, audit feed, emergency controls UI
+- [x] **Phase 6** — Quality gates, static analysis hardening, demo readiness
 - [ ] **Paper** — testing/evaluation section from verified prototype measurements
 
 ---
@@ -328,7 +363,9 @@ Please follow `doc/CONVENTIONS.md` (custom errors `Name__detail`, NatSpec on ext
 - Secret scanning (`npm run scan`) runs over the whole tree and skips only its own pattern source
 - No API keys, seed phrases, or private keys in tracked files — `.env` and generated configs are git-ignored
 - Smart-contract posture: role-gated writes, checks-effects-interactions, `ReentrancyGuard`, pull payments, strict pause matrix
-- Static-analysis cleanup (Slither high-severity findings) is scheduled in Phase 6
+- Slither 0.11.5 (solc 0.8.28): **0 High / 0 Medium**; all 19 remaining informational/low findings and the single justified suppression are documented in `doc/STATIC_ANALYSIS.md`
+- Verification notes: `http-cache-semantics` (dev-only, via `solhint` → `latest-version`) reports a high advisory in `npm audit`; it is not shipped to the frontend or the runtime and is tracked as known debt
+- The public verifier surfaces only seven non-identity fields — no name, document, or contact data on chain (FR-32)
 
 ---
 

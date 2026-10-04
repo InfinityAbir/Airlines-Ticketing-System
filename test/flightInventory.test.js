@@ -173,3 +173,124 @@ describe("FlightInventory (Phase 1)", function () {
     await expectEvent(inventory.connect(airline).publishFlight(1), inventory, "FlightPublished");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 — coverage close-out. PRD §17 metric 2 demands a passing success and
+// failure path for every public state-changing function; these tests add the
+// paths the earlier phases did not reach (wiring guards, double actions,
+// terminal-state transitions and unknown-id reads on this contract).
+// ---------------------------------------------------------------------------
+
+describe("FlightInventory coverage close-out (Phase 6)", function () {
+  async function deploy() {
+    const [admin, airline, other, settler, market] = await getSigners();
+    const Registry = await getFactory("AirlineRegistry");
+    const registry = await Registry.deploy(admin.address);
+    await registry.waitForDeployment();
+    const Inventory = await getFactory("FlightInventory");
+    const inventory = await Inventory.deploy(await registry.getAddress(), admin.address);
+    await inventory.waitForDeployment();
+    await registry.connect(admin).approveAirline(airline.address);
+    await inventory.connect(admin).setAuthorizedParties(settler.address, market.address);
+    return { registry, inventory, admin, airline, other, settler, market };
+  }
+
+  it("constructor rejects a zero registry or admin", async function () {
+    const [admin] = await getSigners();
+    const Registry = await getFactory("AirlineRegistry");
+    const registry = await Registry.deploy(admin.address);
+    await registry.waitForDeployment();
+    const Inventory = await getFactory("FlightInventory");
+    await expectCustomError(
+      Inventory.deploy(ethers.ZeroAddress, admin.address),
+      Inventory,
+      "ZeroAddress__account"
+    );
+    await expectCustomError(
+      Inventory.deploy(await registry.getAddress(), ethers.ZeroAddress),
+      Inventory,
+      "ZeroAddress__account"
+    );
+  });
+
+  it("setAuthorizedParties is admin-only, rejects zero addresses and emits its re-wire", async function () {
+    const { inventory, admin, other, settler, market } = await deploy();
+    await expectCustomError(
+      inventory.connect(other).setAuthorizedParties(settler.address, market.address),
+      inventory,
+      "AccessControlUnauthorizedAccount"
+    );
+    await expectCustomError(
+      inventory.connect(admin).setAuthorizedParties(ethers.ZeroAddress, market.address),
+      inventory,
+      "ZeroAddress__account"
+    );
+    await expectCustomError(
+      inventory.connect(admin).setAuthorizedParties(settler.address, ethers.ZeroAddress),
+      inventory,
+      "ZeroAddress__account"
+    );
+    const ev = await expectEvent(
+      inventory.connect(admin).setAuthorizedParties(market.address, settler.address),
+      inventory,
+      "AuthorizedPartiesUpdated"
+    );
+    assert.equal(ev.args.settlement, market.address);
+    assert.equal(ev.args.marketplace, settler.address);
+    expect(await inventory.settlement()).to.equal(market.address);
+    expect(await inventory.marketplace()).to.equal(settler.address);
+  });
+
+  it("publish, cancel and depart reject unknown flights and every double action", async function () {
+    const { inventory, airline } = await deploy();
+    const dep = (await latest()) + 30 * 24 * 3600;
+    await inventory.connect(airline).createFlight(flightArgs("C6-A", dep));
+    await inventory.connect(airline).createFlight(flightArgs("C6-B", dep + 100));
+    await inventory.connect(airline).createFlight(flightArgs("C6-C", dep + 200));
+
+    // Unknown ids fall through the `onlyFlightAirline` modifier first: nobody owns a
+    // flight that does not exist, so the operator gate is what answers.
+    await expectCustomError(inventory.connect(airline).publishFlight(99), inventory, "NotFlightAirline__caller");
+    await expectCustomError(inventory.connect(airline).pauseSales(99), inventory, "NotFlightAirline__caller");
+    await expectCustomError(inventory.connect(airline).cancelFlight(99), inventory, "NotFlightAirline__caller");
+    await expectCustomError(inventory.connect(airline).markDeparted(99), inventory, "NotFlightAirline__caller");
+
+    // Flight 1: publish → depart → both a re-publish and a late cancel are refused.
+    await inventory.connect(airline).publishFlight(1);
+    await inventory.connect(airline).markDeparted(1);
+    expect((await inventory.getFlight(1)).salesOpen).to.equal(false);
+    await expectCustomError(inventory.connect(airline).publishFlight(1), inventory, "AlreadyDeparted__id");
+    await expectCustomError(inventory.connect(airline).cancelFlight(1), inventory, "AlreadyDeparted__id");
+    // A second departure is idempotent: the flight is already gone, nothing changes.
+    await expectEvent(inventory.connect(airline).markDeparted(1), inventory, "FlightDeparted");
+    expect((await inventory.getFlight(1)).departed).to.equal(true);
+
+    // Flight 2: cancel → a re-cancel, a re-publish and a later departure are refused.
+    await inventory.connect(airline).cancelFlight(2);
+    await expectCustomError(inventory.connect(airline).cancelFlight(2), inventory, "AlreadyCancelled__id");
+    await expectCustomError(inventory.connect(airline).publishFlight(2), inventory, "AlreadyCancelled__id");
+    await expectCustomError(inventory.connect(airline).markDeparted(2), inventory, "AlreadyCancelled__id");
+    expect((await inventory.getFlight(2)).cancelled).to.equal(true);
+
+    // Flight 3: departure first, then cancelling that departed flight is refused.
+    await inventory.connect(airline).markDeparted(3);
+    await expectCustomError(inventory.connect(airline).cancelFlight(3), inventory, "AlreadyDeparted__id");
+  });
+
+  it("pauseSales and markDeparted reject callers outside the flight's airline", async function () {
+    const { inventory, airline, other } = await deploy();
+    const dep = (await latest()) + 30 * 24 * 3600;
+    await inventory.connect(airline).createFlight(flightArgs("C6-D", dep));
+    await expectCustomError(inventory.connect(other).pauseSales(1), inventory, "NotFlightAirline__caller");
+    await expectCustomError(inventory.connect(other).markDeparted(1), inventory, "NotFlightAirline__caller");
+    expect((await inventory.getFlight(1)).salesOpen).to.equal(false);
+    expect((await inventory.getFlight(1)).departed).to.equal(false);
+  });
+
+  it("reserve/release reject unknown flights for an authorized party", async function () {
+    const { inventory, settler } = await deploy();
+    await expectCustomError(inventory.connect(settler).reserveSeat(77), inventory, "UnknownFlight__id");
+    await expectCustomError(inventory.connect(settler).releaseSeat(77), inventory, "UnknownFlight__id");
+    await expectCustomError(inventory.connect(settler).reserveSeat(0), inventory, "UnknownFlight__id");
+  });
+});

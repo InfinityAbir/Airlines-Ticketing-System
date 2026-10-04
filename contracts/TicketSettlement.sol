@@ -303,8 +303,9 @@ contract TicketSettlement is Pausable, ReentrancyGuard {
     /// @notice Seat reference the next purchase would receive (checkout preview, no side effects).
     /// @param flightId Flight whose next seat number is previewed.
     function previewSeatReference(uint256 flightId) external view returns (string memory) {
-        ISettlementInventory(inventory).getFlight(flightId); // unknown flight reverts here
-        return string.concat("S-", _nextSeatNumber(flightId).toString());
+        // Reading the record is the unknown-flight guard: `getFlight` reverts for id 0/unknown.
+        uint256 knownId = ISettlementInventory(inventory).getFlight(flightId).flightId;
+        return string.concat("S-", _nextSeatNumber(knownId).toString());
     }
 
     // ---- Internal ----
