@@ -12,6 +12,7 @@
 \usepackage{url}
 
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\graphicspath{{figs/}{Paper/figs/}}
 \tikzset{
   block/.style={draw, rounded corners, align=center, minimum height=7mm, minimum width=21mm, font=\footnotesize},
   smallblock/.style={draw, rounded corners, align=center, minimum height=6mm, minimum width=17mm, font=\scriptsize},
@@ -30,7 +31,7 @@ email@example.com}}
 \maketitle
 
 \begin{abstract}
-Buying a flight ticket is still often dependent on several disconnected systems: a payment provider, a reservation platform, an airline database, and customer-service processes. When those systems disagree, travelers may face failed ticket issuance, slow refunds, or unclear ownership records. This paper proposes a blockchain framework that makes the ticket lifecycle easier to verify. Each valid ticket is represented by a non-fungible token (NFT), and smart contracts manage issuance, transfer, cancellation, and refund events. Large ticket records are kept in the InterPlanetary File System (IPFS), while their cryptographic fingerprints are stored on-chain. The design also combines decentralized identity (DID), elliptic-curve cryptography (ECC), and zero-knowledge proofs (ZKPs) so that a traveler can prove necessary attributes without unnecessarily disclosing personal information. Finally, ERC-2981 is used to define a transparent royalty rule for permitted resale. The proposed model aims to give airlines and travelers a clearer, more secure, and more auditable way to manage ticket transactions.
+Buying a flight ticket is still often dependent on several disconnected systems: a payment provider, a reservation platform, an airline database, and customer-service processes. When those systems disagree, travelers may face failed ticket issuance, slow refunds, or unclear ownership records. This paper proposes a blockchain framework that makes the ticket lifecycle easier to verify. Each valid ticket is represented by a non-fungible token (NFT), and smart contracts manage issuance, transfer, cancellation, and refund events. Large ticket records are kept in the InterPlanetary File System (IPFS), while their cryptographic fingerprints are stored on-chain. The design also combines decentralized identity (DID), elliptic-curve cryptography (ECC), and zero-knowledge proofs (ZKPs) so that a traveler can prove necessary attributes without unnecessarily disclosing personal information. Finally, ERC-2981 is used to define a transparent royalty rule for permitted resale. The proposed model aims to give airlines and travelers a clearer, more secure, and more auditable way to manage ticket transactions. A working prototype on a local Ethereum network completes the full ticket lifecycle: 110 contract tests pass, static analysis reports no high- or medium-severity finding, and a resale payment is split into airline royalty and seller proceeds with no rounding loss.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -194,10 +195,122 @@ Once the checks pass, the contract burns the NFT or transfers it to a controlled
 \label{fig:cancellation}
 \end{figure}
 
+\section{Testing and Evaluation}
+The framework was implemented as a working prototype so that the design rules above could be checked in practice rather than only on paper. The prototype uses Solidity 0.8.28 with OpenZeppelin 5.6.1, a local Hardhat development chain (chainId 31337), ethers v6, and a plain HTML/JavaScript front end that talks to the contracts through an injected wallet. Ticket metadata is uploaded through a small protected endpoint; when no storage provider is configured, the system generates a deterministic mock content identifier and labels the record accordingly. All data is fictional and every value transfer uses test ether.
+
+\subsection{Contract Testing and Static Analysis}
+The five contracts and the protected upload endpoint are covered by 110 automated tests, distributed as 15 registry, 11 inventory, 12 ticket-NFT, 31 settlement, 33 marketplace, and 8 upload-endpoint checks. Every public state-changing function is exercised on its success path and on its failure path, including role violations, invalid or out-of-range arguments, pause states, terminal ticket states, refund-deadline boundaries, resale price and expiry caps, cross-airline withdrawal attempts, and repeated cancellation of a ticket that has already reached its terminal state. Table~\ref{tab:verification} summarizes the verification results.
+
+\begin{table}[!t]
+\caption{Verification results of the implemented prototype}
+\label{tab:verification}
+\centering
+\footnotesize
+\begin{tabularx}{\columnwidth}{p{.33\columnwidth}Y}
+\toprule
+\textbf{Check} & \textbf{Result}\\
+\midrule
+Unit tests (6 suites) & 110/110 pass, including failure paths for every public write\\
+Static analysis (Slither 0.11.5) & 0 high and 0 medium findings; 19 low/informational items documented\\
+Contract linting (Solhint) & 0 errors\\
+Credential scan & No secrets in tracked source\\
+Scripted demo scenario & 7/7 steps pass, non-zero exit on failure\\
+Browser end-to-end (Playwright) & 21/21 tests pass, no uncaught page errors\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Rejected operations are checked against their named custom errors rather than against a generic failure. A second cancellation of a ticket that is already cancelled reverts with \texttt{NotIssued\_\_state}; a cancellation, a resale listing, or a new booking after departure reverts with \texttt{FlightDeparted\_\_id}; a listing above the resale cap reverts with \texttt{ResaleCapExceeded\_\_price}; an expiry beyond the check-in boundary reverts with \texttt{ExpiryPastCheckin\_\_expiresAt}; an attempt to list a ticket the caller does not own reverts with \texttt{NotTicketOwner\_\_caller}; and a wallet that has not been approved cannot create a flight (\texttt{NotApproved\_\_wallet}). Unit tests assert these rejections directly, and the scripted demonstration repeats the departure-related ones against the same chain state it uses for the happy path, so the evaluation covers both the success and the failure side of every public operation.
+
+Static analysis was run with Slither 0.11.5 against the same compiler version. No high- or medium-severity issue remains. The reentrancy reports on the payout paths were resolved by ordering state updates before external transfers, the uninitialized-value report was resolved by initializing the affected return variable, and the one suppressed finding (arbitrary ether send) concerns an administrator-gated pull withdrawal that can only move funds already credited to per-airline balances. The nineteen remaining findings are informational --- block-timestamp dependence, benign reentrancy annotations, low-level calls used with explicit recipients, and event-indexing suggestions --- and each one is recorded together with its disposition. The full report is archived with the source, and the analysis is rerun as part of the release gate after every contract change, so a regression that reintroduced a high- or medium-severity finding would fail the gate rather than surface during a review.
+
+Beyond the static tooling, the test suite pins down the runtime security posture. The platform pause blocks flight creation, publishing, booking, listing, resale, and transfers while leaving cancellation, boarding, and reads available so that an active ticket can always be resolved; a deactivated operator cannot create new flights while tickets already issued under it remain valid; withdrawal pays each airline only its own credit less the refund reserve; and no administrative function can move a ticket, a seat, or another account's balance. Each of these properties is asserted as a test rather than left to review, which is why the security argument for the prototype rests on executed checks instead of on the code's appearance.
+
+\subsection{Scenario Evaluation}
+A scripted evaluator performs the complete demonstration from a fresh chain. An administrator approves an airline operator wallet; the operator publishes a five-seat flight with a 0.1~ETH fare, an 80\% refund policy, and a 5\% resale royalty; a traveler buys seat \texttt{S-1} and receives an ERC-721 ticket; the public verifier reports the ticket through exactly seven non-identity fields; the ticket is listed at 0.11~ETH (within the 120\% cap) and bought by a third wallet, which pays the airline 0.0055~ETH and the seller 0.1045~ETH --- an exact partition of the payment with no rounding loss beyond the documented integer-division rule; a second ticket is cancelled for a 0.08~ETH refund that retains 0.02~ETH, with the seat returning to inventory; and after the flight is marked departed, cancellation, resale, and new bookings all revert with a departure error. All seven steps pass, and the evaluator records the transaction hash of each lifecycle transaction, so every figure quoted here can be traced to an individual transaction on the local chain.
+
+Table~\ref{tab:gas} reports the gas consumed by the main lifecycle transactions on the local EVM. Ticket issuance is the most expensive operation because a single transaction mints the NFT, reserves the seat, and updates settlement and escrow accounting, while marking a flight departed is an order of magnitude cheaper. The figures are indicative rather than definitive: they were measured on an unloaded local node with the default (unoptimized) compiler settings. Table~\ref{tab:demo} lists the observed outcome of each of the seven steps, in the order the evaluator executes them.
+
+The evaluator asserts those outcomes rather than merely printing them. Around every transaction it compares the settlement balance, the per-airline credit, and the refund reserve against independently computed expectations; after a resale it checks that the marketplace contract retains no ether, that the airline received exactly the royalty, and that the seller received exactly the remainder; after a cancellation it checks that the escrow released precisely one ticket's reserve, that the airline's credit was debited by the refund, and that the vacated seat reappeared in the inventory pool; and it confirms that a terminal state cannot be left again. Any mismatch aborts the run with a non-zero exit code, so a green result means the accounting reconciled to the wei at every step rather than that the transactions merely succeeded.
+
+\begin{table}[!t]
+\caption{Gas used by the main lifecycle transactions (local EVM, optimizer disabled)}
+\label{tab:gas}
+\centering
+\footnotesize
+\begin{tabularx}{\columnwidth}{Yrl}
+\toprule
+\textbf{Operation} & \textbf{Gas} & \textbf{Tx (prefix)}\\
+\midrule
+Purchase (mint + reserve + accounting) & 386\,325 & \texttt{0xce82$\cdot\cdot$}\\
+List ticket for resale & 310\,302 & \texttt{0xa44f$\cdot\cdot$}\\
+Buy listing (royalty + proceeds split) & 185\,674 & \texttt{0x6292$\cdot\cdot$}\\
+Cancel ticket (refund + seat return) & 196\,265 & \texttt{0x2bbf$\cdot\cdot$}\\
+Mark flight departed & 33\,049 & \texttt{0x2075$\cdot\cdot$}\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[!t]
+\caption{Observed outcome of each demonstration step}
+\label{tab:demo}
+\centering
+\footnotesize
+\begin{tabularx}{\columnwidth}{p{.07\columnwidth}Y}
+\toprule
+\textbf{\#} & \textbf{Observation}\\
+\midrule
+1 & Airline wallet approved; role and approval flag set\\
+2 & \texttt{R1-DEMO-001} published: 5 seats, 0.1~ETH fare, 80\% refund, 5\% royalty\\
+3 & Ticket 1 issued on seat \texttt{S-1}; settlement holds 0.1~ETH with a 0.08~ETH reserve\\
+4 & Verifier reports 7 non-identity fields, state \texttt{Issued}, preview 0.08/0.02~ETH\\
+5 & 0.11~ETH splits into 0.0055~ETH royalty and 0.1045~ETH proceeds, atomically\\
+6 & Ticket 2 \texttt{Cancelled}: 0.08~ETH refunded, 0.02~ETH retained, seat returned\\
+7 & \texttt{FlightDeparted\_\_id} rejects cancellation, resale, and a new booking\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The front end is covered by 21 automated browser tests covering public verification without a wallet, the full purchase-to-resale-to-cancellation journey, administrative role gating, and responsive and accessibility checks at a 375~px viewport, with screenshots captured at each stage. Two implementation lessons are worth recording. First, keeping the marketplace as the only authority over resale arithmetic meant the display-only royalty view and the settlement path could not drift apart: both read the same stored basis points, and the evaluator checks the split against an independently computed expectation. Second, deriving the administrative audit feed from a bounded scan of contract events avoided deploying an indexer while still attributing every action to a transaction hash; that trade-off is acceptable for a prototype with a bounded history window but not for an archive that must grow indefinitely. The evaluation confirms the success metrics of the prototype: the scripted flows complete on the local network, every public write has passing success and failure-path tests, no credentials appear in tracked client code, no unresolved high-severity finding remains, a verifier can identify a ticket's state without access to personal data, and a resale event accounts for 100\% of the payment as seller proceeds plus airline royalty.
+
+\subsection{Reproducibility and Evidence}
+All numbers reported in this section come from the repository's own gates, which can be rerun from a clean checkout. \texttt{npm test} boots a local chain and runs the unit suites; \texttt{npm run eval} redeploys the stack and replays the seven-step demonstration, printing one pass/fail line per step, the gas used and the transaction hash of each lifecycle transaction, and a JSON summary that can be archived with the submission; \texttt{npm run test:e2e} starts a node, a static file server, and the browser suite; and Slither, Solhint, and the credential scan run as separate steps. The static-analysis report, the evaluator summary, and the screenshots produced by the browser suite are stored alongside the source, so the evaluation can be repeated rather than taken on trust.
+
+The browser suite supplies the remaining evidence. It verifies that the public pages load with no wallet attached, walks the complete journey from booking to cancellation, checks the administrative role gating, confirms that no page raises an uncaught console error, and loads every page at a 375\,px viewport to assert that nothing scrolls horizontally and that each control carries an accessible label. The interface checks are part of the evidence rather than decoration: status messages must be announced through a live region, a page refresh must not discard an operator's in-progress edit, and a rejected transaction must be reported as a sentence rather than as raw custom-error data. Figure~\ref{fig:screenshots} shows three stages of the demonstration as captured by that suite: the booking confirmation after the mint transaction settles, the public verification page that reports the ticket without any personal data, and the marketplace after the resale has distributed the royalty and the proceeds.
+
+\begin{figure*}[!t]
+\centering
+\footnotesize
+\begin{minipage}[b]{0.31\textwidth}
+\centering
+\includegraphics[width=\linewidth]{booking-confirmed}\\[-1pt]
+\textit{(a) Booking confirmed}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.31\textwidth}
+\centering
+\includegraphics[width=\linewidth]{verify-issued}\\[-1pt]
+\textit{(b) Public verification}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.31\textwidth}
+\centering
+\includegraphics[width=\linewidth]{resale-settled}\\[-1pt]
+\textit{(c) Resale settled}
+\end{minipage}
+\caption{Prototype evidence captured by the browser test suite: (a) the ticket is minted after payment is confirmed, (b) the public verifier reports the issued state from seven non-identity fields, and (c) the completed resale pays the airline royalty and the seller proceeds in a single transaction.}
+\label{fig:screenshots}
+\end{figure*}
+
+\subsection{Limitations}
+Relative to the systems compared in Table~\ref{tab:related}, the prototype contributes an executable combination of ideas that earlier work usually proposes separately: access-controlled issuance, off-chain metadata with an on-chain fingerprint, a verifier surface that exposes no personal data, and a royalty split enforced inside the settlement transaction rather than by convention. The evaluation shows that these rules can coexist in one ticket lifecycle without an indexer or a trusted off-chain component in the settlement path.
+
+The prototype runs on a single local node with test ether, so no conclusion can yet be drawn about throughput, latency, or cost under real demand, and the gas figures are not comparable to a production network. There is no integration with a real reservation or payment system, identity validation is simulated rather than backed by issued credentials, and metadata storage falls back to a labeled mock identifier when no IPFS provider is configured. These constraints bound the evaluation to functional correctness, accounting exactness, and security posture.
+
+The evaluation is therefore functional rather than statistical. It shows that the rules hold when they are exercised in sequence on one deterministic chain, but a single run says nothing about concurrent transactions, and the measurements come from a simulated EVM without the optimizer a production deployment would use. The accounts, flight, and fares are fixed fixtures, so the results characterize the implementation of the rules rather than any particular route, airline, or booking volume.
+
 \section{Conclusion and Future Work}
 This paper outlines a practical way to make airline ticketing more transparent without putting sensitive ticket records directly on a blockchain. NFTs provide a clear representation of ticket ownership. Smart contracts record and enforce the events that matter most: issue, transfer, cancellation, and refund. IPFS keeps detailed metadata scalable, while DID, ECC, and ZKPs support a more privacy-conscious identity process. ERC-2981 adds a visible rule for airline participation in authorized resale.
 
-The framework is a design proposal and needs validation in a working airline environment. Future work should build a prototype with airline and reservation-system partners, measure performance under realistic demand, examine interoperability between chains and existing booking platforms, and optimize ZKP verification. It should also study the legal, consumer-protection, and economic consequences of a royalty-enabled ticket resale market.
+The framework is implemented as a working prototype on a local Ethereum network, where the scripted demonstration completes the full lifecycle and the resale payment settles as an exact royalty-plus-proceeds split. Validation in a real operating environment is still required. Future work should connect the prototype to airline and reservation-system partners, measure performance under realistic demand, examine interoperability between chains and existing booking platforms, and optimize ZKP verification. It should also study the legal, consumer-protection, and economic consequences of a royalty-enabled ticket resale market.
 
 \begin{thebibliography}{00}
 \bibitem{shaikh2023} M. Shaikh and R. Borate, ``Airline Booking System,'' \emph{Technoarete Transactions on Advances in Computer Applications}, vol. 2, no. 1, pp. 12--18, 2023.

@@ -84,13 +84,19 @@ function parseEvents(receipt, contract) {
 }
 
 /// @notice Send a transaction and return the first matching parsed event.
-async function eventOf(promise, contract, name) {
+/// @param gasKey Optional label; when given, the receipt's gasUsed and tx hash are
+///               recorded in `gasReport` for the paper's evaluation section.
+async function eventOf(promise, contract, name, gasKey) {
   const tx = await promise;
   const receipt = await tx.wait();
+  if (gasKey) gasReport[gasKey] = { gasUsed: Number(receipt.gasUsed), txHash: receipt.hash };
   const parsed = parseEvents(receipt, contract).find((e) => e.name === name);
   if (!parsed) throw new Error(`expected event ${name} in receipt`);
   return parsed;
 }
+
+// Gas measurements observed on the local EVM (printed + echoed in the JSON summary).
+const gasReport = {};
 
 async function main() {
   const { ethers } = await network.create();
@@ -161,7 +167,8 @@ async function main() {
     const ev = await eventOf(
       settlement.connect(traveler).purchase(flightId, CID, { value: FARE }),
       settlement,
-      "PurchaseCompleted"
+      "PurchaseCompleted",
+      "purchase"
     );
     assert.equal(ev.args.buyer, traveler.address, "buyer mismatch");
     assert.equal(ev.args.flightId, flightId, "flight mismatch");
@@ -226,7 +233,8 @@ async function main() {
         .connect(traveler)
         .list(resoldTokenId, RESALE_PRICE, preview.defaultExpiry),
       marketplace,
-      "ListingCreated"
+      "ListingCreated",
+      "listTicket"
     );
     listingId = listEv.args.listingId;
     assert.equal((await nft.getTicket(resoldTokenId)).state, STATE.Listed, "ticket must be Listed");
@@ -238,7 +246,8 @@ async function main() {
     const soldEv = await eventOf(
       marketplace.connect(buyer3).buyListing(listingId, { value: RESALE_PRICE }),
       marketplace,
-      "ListingSold"
+      "ListingSold",
+      "buyListing"
     );
 
     // PRD §17 metric 6: 100% of the payment is accounted for as royalty + proceeds.
@@ -291,7 +300,9 @@ async function main() {
     assert.equal(previewRetained, EXPECTED_RETAINED, "preview retained mismatch");
 
     const contractBefore = await provider.getBalance(await settlement.getAddress());
-    const receipt = await (await settlement.connect(traveler).cancel(cancelledTokenId)).wait();
+    const cancelTx = await settlement.connect(traveler).cancel(cancelledTokenId);
+    const receipt = await cancelTx.wait();
+    gasReport.cancelTicket = { gasUsed: Number(receipt.gasUsed), txHash: receipt.hash };
     const events = parseEvents(receipt, settlement);
     const cancelledEv = events.find((e) => e.name === "TicketCancelled");
     const refundEv = events.find((e) => e.name === "TicketRefunded");
@@ -329,7 +340,12 @@ async function main() {
   });
 
   await step(7, "The operator marks the flight departed; cancel and resale are blocked", async () => {
-    await eventOf(inventory.connect(airline).markDeparted(flightId), inventory, "FlightDeparted");
+    await eventOf(
+      inventory.connect(airline).markDeparted(flightId),
+      inventory,
+      "FlightDeparted",
+      "markDeparted"
+    );
     const f = await inventory.getFlight(flightId);
     assert.equal(f.departed, true, "flight must be departed");
     assert.equal(f.salesOpen, false, "sales must close on departure");
@@ -364,6 +380,11 @@ async function main() {
   const passed = results.filter((r) => r.ok).length;
   console.log("");
   console.log(`Demo evaluation: ${passed}/${TOTAL} PRD 15 steps passed.`);
+  console.log("");
+  console.log("Gas used (gasUsed observed on the local EVM):");
+  for (const [label, m] of Object.entries(gasReport)) {
+    console.log(`  ${label.padEnd(14)} ${String(m.gasUsed).padStart(8)}  ${m.txHash}`);
+  }
   console.log(
     JSON.stringify(
       {
@@ -380,6 +401,7 @@ async function main() {
           refund: EXPECTED_REFUND.toString(),
           retained: EXPECTED_RETAINED.toString(),
         },
+        gas: gasReport,
         passed,
         total: TOTAL,
       },

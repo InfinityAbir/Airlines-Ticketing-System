@@ -8,7 +8,7 @@
 
 ## Current Artifacts
 
-- `blockchain_airline_ticketing_ieee.tex` - Current full IEEE LaTeX paper source.
+- `Paper\blockchain_airline_ticketing_ieee.tex` - Current full IEEE LaTeX paper source.
 - `AIRLINE_TICKETING_PROTOTYPE_PRD.md` - Full product requirements document for the prototype.
 - Original source PDF - `A new approach to improving security & transparency of airlines ticketing system using decentralized blockchain technology(1) (1).pdf`.
 
@@ -20,9 +20,9 @@ The LaTeX paper was recreated and rewritten from the source PDF in a more natura
 
 - IEEE conference format using `\documentclass[conference]{IEEEtran}`.
 - Title: *A Practical Blockchain Framework for Secure and Transparent Airline Ticketing*.
-- Sections: Introduction, Related Work, Architecture and Implementation, Recommended Framework, Conclusion and Future Work.
+- Sections: Introduction, Related Work, Architecture and Implementation, Recommended Framework, Testing and Evaluation, Conclusion and Future Work.
 - Thirteen focused references, all cited in the text. Original references 15--17 were excluded because reference 15 was Bangladesh-specific and references 16--17 were not needed in the revised paper.
-- Two tables: conventional-system deficiencies and related-work comparison.
+- Four tables: conventional-system deficiencies, related-work comparison, prototype verification results, and lifecycle gas usage.
 - Four diagrams:
   1. Decentralized purchase and cancellation lifecycle.
   2. High-level architecture.
@@ -33,24 +33,27 @@ The LaTeX paper was recreated and rewritten from the source PDF in a more natura
 
 The early TikZ diagrams had arrow labels overlapping the boxes. The labels were removed from arrows in the lifecycle and architecture diagrams, leaving clean boxes, arrows, captions, and explanatory text in the surrounding paper.
 
-### Known compilation limitation
+### Compilation check (passed 2026-10-04)
 
-The built-in LaTeX compiler returned `Unable to find standard directories for platform`. This is an environment/compiler availability issue, not a confirmed source error. The document needs one local compilation check before submission.
+The earlier `Unable to find standard directories for platform` error came from the editor-integrated compiler, not the source. The document now compiles locally with MiKTeX:
 
-### Testing section plan
+```bash
+pdflatex -interaction=nonstopmode -halt-on-error Paper\blockchain_airline_ticketing_ieee.tex
+```
 
-The paper is currently about four pages. After the prototype is built, add a testing/evaluation section that covers:
+Result: **6 pages**, zero LaTeX warnings, zero overfull boxes, no undefined references or citations (run twice for cross-references). The built PDF is `Paper\blockchain_airline_ticketing_ieee.pdf` (`Paper/*.pdf` is git-ignored).
 
-- Test environment: Hardhat, local test wallets, IPFS sample metadata.
-- Booking/payment and NFT minting.
-- Cancellation and refund calculation.
-- Approved resale and airline royalty split.
-- Public ticket verification.
-- Unauthorized actions and invalid ticket states.
-- Unit-test results, transaction hashes, gas usage, timings, screenshots, and static-analysis results.
-- Prototype limitations: local network, test ETH, fictional data, no real airline/payment integration, and simulated identity validation if applicable.
+### Testing section (added 2026-10-04)
 
-Expected final paper length after testing: approximately 5.5--6 IEEE pages.
+`\section{Testing and Evaluation}` sits before the Conclusion and uses only observed results from the finished prototype:
+
+- Environment: Solidity 0.8.28, OZ 5.6.1, Hardhat 3.18 local chain (31337), ethers v6, protected upload with labeled mock-CID fallback, test ETH only.
+- Verification table: 110/110 unit tests (success + failure paths for every public write), Slither 0.11.5 → 0 High / 0 Medium (19 informational documented), Solhint 0 errors, secret scan clean, `npm run eval` 7/7, Playwright 21/21.
+- Scenario evaluation: full PRD §15 walkthrough with exact values (0.11 ETH → 0.0055 royalty + 0.1045 proceeds; 0.08/0.02 refund split; 7-field PII-free verifier; `FlightDeparted__id` blocks).
+- Gas table (measured by `npm run eval`, local EVM, optimizer disabled): purchase 386,325 · list 310,302 · buy 185,674 · cancel 196,265 · markDeparted 33,049.
+- Limitations subsection: single local node, no throughput/cost claims, no real airline or payment integration, simulated identity, mock-CID fallback.
+- Evidence added on request (2026-10-04): per-suite distribution (15/11/12/31/33/8 = 110), failure-path paragraph with the real custom errors, runtime-security-posture paragraph, Table IV gas with tx-hash prefixes, Table V seven-step observed outcomes, evaluator-assertion paragraph (wei reconciliation), `Reproducibility and Evidence` subsection (exact commands + archived artifacts), browser/accessibility evidence, Fig. 5 screenshots copied to `Paper/figs/` from `doc/screenshots/phase6/`, validity paragraph, and positioning against Table II.
+- Abstract and Conclusion updated to reflect the working prototype (replacing the earlier "design proposal" wording).
 
 ## Pension Prototype Audit Reference
 
@@ -122,14 +125,15 @@ The existing reference prototype is located at:
 
 Use OpenZeppelin `AccessControl`, `Pausable`, `ReentrancyGuard`, `ERC721`, and `ERC2981` where relevant.
 
-## Recommended Next Steps
+## Status of the Recommended Next Steps
 
-1. Build the local Hardhat contracts and test suite according to the PRD and R1 decisions.
-2. Implement the vanilla frontend using the pension prototype's dashboard/routing approach.
-3. Add protected IPFS upload for fictional sample metadata.
-4. Run unit tests and static analysis; fix all high-severity issues before demonstrating.
-5. Share the finished prototype, test outputs, screenshots, transaction hashes, and measurements in a new Codex chat.
-6. Ask Codex to add the IEEE testing/evaluation section to `blockchain_airline_ticketing_ieee.tex` using those verified results.
+All six original next steps are done: contracts + 110-test suite, vanilla frontend with admin console, protected upload endpoint, gates green (lint 0 errors, secret scan clean, Slither 0 High/0 Medium), prototype results captured in `doc/STATUS.md` / `doc/screenshots/phase6/`, and the IEEE testing/evaluation section written from observed outputs only.
+
+Remaining before submission, if desired:
+
+1. Fill in the paper's author block (currently `Author Name` placeholder).
+2. Re-run `pdflatex` twice after any edit and review the 5-page PDF layout.
+3. Optionally add measured end-to-end timings (wall-clock per demo step) — not yet captured.
 
 ## Suggested Continuation Prompt
 
