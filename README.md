@@ -267,8 +267,8 @@ Every phase must pass these before it is marked complete in `doc/STATUS.md`:
 | Secret scan | `npm run scan` | clean |
 | Static analysis | Slither 0.11.5 | **0 High / 0 Medium** (19 findings dispositioned in `doc/STATIC_ANALYSIS.md`) |
 | PRD §15 evaluator | `npm run eval` | 7/7 steps PASS |
-| Browser E2E | `npm run test:e2e` | 21 passed |
-| Paper (LaTeX) | `pdflatex` (run twice) | 6 pages, 0 warnings, 0 overfull boxes |
+| Browser E2E | `npm run test:e2e` | 22 passed |
+| Paper (LaTeX) | `pdflatex` (run twice) | 6 pages, 0 errors, 0 undefined refs, 0 overfull boxes |
 
 > Never commit API keys, provider tokens, private keys, or seed phrases. IPFS provider credentials live only in `server/.env` (git-ignored) — never in frontend code.
 
@@ -311,7 +311,7 @@ Airlines-Ticketing-System/
 │   ├── STATIC_ANALYSIS.md         # Slither report + dispositions (Phase 6)
 │   ├── MANUAL_TESTING_CHECKLIST.md# final manual verification (Step 10)
 │   └── screenshots/{phase2..6}/   # per-phase browser verification captures
-├── Paper/                         # IEEE paper (LaTeX) + figs/ prototype screenshots
+├── Paper/                         # IEEE paper (LaTeX, main.tex)
 ├── hardhat.config.js
 ├── playwright.config.js
 ├── .solhint.json
@@ -331,7 +331,7 @@ Airlines-Ticketing-System/
 - `doc/STATIC_ANALYSIS.md` — Slither report, dispositions, and the suppression policy
 - `doc/MANUAL_TESTING_CHECKLIST.md` — final manual verification scenarios (workflow Step 10)
 - `doc/FEEDBACK.md` — review notes
-- `Paper/blockchain_airline_ticketing_ieee.tex` — IEEE paper (6 pages), with a Testing and Evaluation section built only from measured prototype results (Tables III–V, Fig. 5); figures live in `Paper/figs/`, build with `pdflatex` twice
+- `Paper/main.tex` - IEEE paper (6 pages), with a Testing and Evaluation section built only from measured prototype results (Tables III-V) and four TikZ diagrams; build with `pdflatex` twice from `Paper/` (`Paper/*.pdf` is git-ignored)
 
 ---
 

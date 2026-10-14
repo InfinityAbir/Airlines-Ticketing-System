@@ -52,6 +52,7 @@
 - Each money test asserts exact wei splits (`seller + royalty == price`), correct payee, event args, and final states; boundary tests hit `refundDeadline`/`departureTime` ±1s.
 - Static analysis + secret scan: zero unresolved high-severity findings and zero tracked secrets before demo (PRD §13/§17).
 - E2E (Phase 6): scripted PRD §15 scenario runnable from fresh setup; browser checks follow DESIGN.md flows where applicable.
+- E2E wallet sessions: the app never auto-connects, so an authenticated spec must sign in through the UI using the `signIn()` helper from `tests/e2e/helpers/fixtures.js`. It clicks the navbar Login control and waits for Logout to appear, which `Wallet.renderChrome()` only reveals once an address is set. A guest spec uses `walletPage(browser, "guest", "guest")` and must not sign in. `page.evaluate`-style session pokes are not acceptable here: the point of these specs is the same sign-in path a person walks.
 
 ## 7. Git and Docs Hygiene
 

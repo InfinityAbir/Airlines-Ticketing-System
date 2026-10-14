@@ -209,7 +209,12 @@ API boundaries: there is no booking REST API in R1. The contract surface (public
 
 ## 11. Relationship to Paper
 
-The paper (`Paper/blockchain_airline_ticketing_ieee.tex`) proposes DID+ECC+ZKP + ERC-2981 + IPFS. The prototype implements the demonstrable subset: ERC-721 + ERC-2981 royalties + IPFS-CID integrity + simulated credential stub. Full DID/ZKP circuits are explicitly out of scope (PRD §4) — the stub marks the replacement boundary.
+The paper (`Paper/main.tex`) specifies DID+ECC+ZKP + ERC-2981 + IPFS. The prototype implements the demonstrable subset: ERC-721 tickets, resale royalties enforced inside `TicketMarketplace`, IPFS-CID integrity, and a client-side checkbox standing in for credential verification. Full DID/ZKP circuits are explicitly out of scope (PRD §4) — the stub marks the replacement boundary, and the paper now states this as a specification rather than a result.
+
+Two details are worth keeping straight when the paper and the contracts are read side by side:
+
+- **ERC-2981 is a view, not the settlement authority.** `TicketMarketplace.buyListing` computes `royalty = priceWei * f.royaltyBps / 10000` itself and sends `priceWei - royalty` to the seller. `AirTicketNFT.royaltyInfo` is a display-only mirror of the same basis points, so a generic NFT marketplace can show the royalty without being trusted with the money.
+- **Cancellation invalidates, it does not burn.** `AirTicketNFT.invalidateAsCancelled` sets the terminal `Cancelled` state and emits `TicketInvalidated`. Burning would remove the token from the public verifier's reach, which is exactly the record a passenger or auditor needs after a refund.
 
 ## 12. Locked R1 Defaults (approved 2026-10-01)
 

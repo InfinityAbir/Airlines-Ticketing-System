@@ -5,7 +5,7 @@
 
 ## 1. Design Principles
 
-1. Wallet-first, role-routed: connect → show address/network/role → route to the right dashboard, while flights + verification stay public (FR-02/04).
+1. Wallet-first, role-routed: sign in → show address/network/role → route to the right dashboard, while flights + verification stay public (FR-02/04). Signing in is explicit — a wallet the browser has already authorized stays in its guest state until the person presses Login, so a session is never started by the extension alone.
 2. Status-driven journey: every ticket shows one unambiguous badge (`Issued, Listed, Cancelled, Used, Invalid`; R1 terminal badge is `Cancelled` — `Refunded` is never a badge, refund detail appears in the receipt from the `TicketRefunded` event); every flight shows one display label derived from on-chain flags — `Draft` (created, never published, `salesOpen=false`), `Published` (`salesOpen=true`), `Paused` (sales halted after publish, `salesOpen=false`), `Cancelled` (`cancelled=true`), `Departed` (`departed=true`) — plus a `salesOpen` indicator. Display labels introduce no new storage.
 3. Human wording for blockchain: "test ETH", "transaction hash", "CID status", plain-language refund/royalty breakdowns (PRD §12 Explainability).
 4. Prototype honesty: permanent disclosure banner — "Educational prototype. Test ETH, sample flights, simulated credential check. Not a real booking system."
@@ -15,9 +15,10 @@
 
 ## 2. Global Layout
 
-- Top navbar: logo/title, links (Flights, Marketplace, My Tickets, Airline, Admin, Verify), network pill (`Hardhat 31337` green / `Unsupported chain` red), wallet button (`Connect` → `0x1234…abcd` + role chip: Traveler / Airline Operator / Administrator / Guest).
+- Top navbar: logo/title, links (Flights, Marketplace, My Tickets, Airline, Admin Console, Verify), network pill (`Hardhat 31337` green / `Unsupported chain` red), role chip (Traveler / Airline Operator / Administrator / Guest), a **Login** button shown only while signed out and a **Logout** button shown only while signed in.
+- Nav link visibility follows the session and the detected role: My Tickets once signed in, Airline for an operator or administrator, Admin Console for an administrator. This is routing convenience only — it is not an access control, and every privileged write re-checks the role on-chain.
 - Below navbar on every page: prototype disclosure strip + network status line.
-- Shared components (`frontend/assets/js/ui.js`): `toast(type, msg, txHash?)`, `statusBadge(state)`, `txProgress(states)`, `emptyState(table, msg)`, `txHistoryList(events)`, `addressShort(addr)`, `ethFormat(wei)`.
+- Shared components (`frontend/assets/js/ui.js`, exposed as `window.UI`): text `escapeHtml` / `shortAddress` / `shortHash` / `ethFormat` / `ethText` / `formatBpsToPct` / `formatTimestamp` / `timestampText`; status `statusBadge` / `statusBadgeFromIndex` / `flightLabel` / `flightBadge`; feedback `toast` / `txSteps` / `emptyRow` / `confirmModal` / `revertMessage` / `setBusy` / `markBusy` / `clearBusy`; metadata `fingerprint` / `mockCidFor` / `cidSource` / `sourceBadge` / `verifyCid` / `qrDataUrl` / `verifyLink`; lists `txHistoryRows` / `bindPendingLinks` / `bindVerifyHandoff`; loading `skeletonCards` / `skeletonTickets` / `skeletonRows` / `skeletonLines` / `skeletonPanel` / `statsLoading`; inputs `unixToLocalInput` / `localInputToUnix`; and `initMotion` / `initCustomSelects` / `initCustomDateTimes` / `reducedMotion`, which run once on load and re-run through a `MutationObserver` as pages swap content.
 - Responsive: single-column cards under ~768px; tables collapse to stacked cards; wallet bar remains reachable; touch targets ≥ 44px.
 - Accessibility: semantic landmarks, labels on all inputs, visible focus rings, colour + text for badges (never colour alone), keyboard-operable modals/dialogs, sufficient contrast.
 
@@ -87,7 +88,9 @@ Flow: flight summary → seat confirmation (R1: exactly one seat per tx, auto-as
 
 - Public: `index, flights, marketplace, verify` — no wallet required to read.
 - Protected: `checkout, tickets` (any connected wallet on supported chain); `airline` (approved `AIRLINE_ROLE`); `admin` (`DEFAULT_ADMIN_ROLE`).
-- Router behavior (FR-04): unknown role → traveler view; wrong role → friendly "Not authorized for this space" + link to correct dashboard (never a blank page or redirect loop); logged-out access to protected page → connect prompt preserving intended destination.
+- Router behavior (FR-04): unknown role → traveler view; wrong role → friendly "Not authorized for this space" + link to correct dashboard (never a blank page or redirect loop); signed-out access to a protected page → sign-in prompt preserving the intended destination.
+- Hiding a link is only a routing hint. The protected pages still render their own guard, and every write re-checks the role on-chain, so removing a `hidden` attribute in devtools grants nothing.
+- Logout clears the app session (`sessionStorage`) and drops back to the guest view. It does not disconnect MetaMask itself; the extension may keep the account authorized, which is exactly why the app keeps its own signed-in flag rather than trusting `eth_accounts`.
 - Chain guard global: any write on unsupported chain is blocked before signing with "Switch network" guidance (FR-03).
 
 ## 5. Forms, Validation, Loading and Error States

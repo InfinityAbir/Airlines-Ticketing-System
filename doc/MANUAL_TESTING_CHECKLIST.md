@@ -11,6 +11,11 @@
 > `node server/upload.js` (terminal 3) → open `http://localhost:3000`.
 > Wallet: any Hardhat test account, chain 31337 (admin = #0, airline = #1, traveler = #2,
 > buyer = #3). Automated coverage is noted per row so manual runs focus on what scripts cannot see.
+>
+> **Signing in:** the app does not auto-connect. Every step written as "Log in as …" means
+> selecting that account in MetaMask *and* pressing the navbar **Login** button; the role chip
+> must leave `Guest` before the step continues. **Logout** returns the page to the guest view
+> without disconnecting MetaMask.
 
 ## 1. Environment and setup
 
@@ -28,23 +33,24 @@
 | ID | Scenario | Steps | Expected result | Priority |
 |---|---|---|---|---|
 | ROLE-01 | Guest (no wallet) reads everything public | Open `flights.html`, `marketplace.html`, `verify.html`, `admin.html` without connecting | All pages render; no write controls anywhere; admin shows "Public audit view" | High |
-| ROLE-02 | Non-admin wallet is read-only | Connect traveler wallet → `admin.html` | "Not authorized…" notice; approvals/limits/pause cards hidden; audit feed still readable | High |
-| ROLE-03 | Admin session unlocks controls | Connect admin `0xf39F…2266` → `admin.html` | Three control cards visible, R1 defaults prefilled (10.00% / 100.00%), nine matrix rows "Available" | High |
-| ROLE-04 | Unapproved airline sees a pending notice | Connect a fresh wallet → `airline.html` | Pending-approval notice, no flight creation form | Medium |
-| ROLE-05 | Approved airline can create and publish | Connect `0x7099…79C8` → create flight → publish | Flight row appears, then moves to published state; both require wallet confirmation | High |
+| ROLE-02 | Non-admin wallet is read-only | Log in as traveler → `admin.html` | "Not authorized…" notice; approvals/limits/pause cards hidden; audit feed still readable | High |
+| ROLE-03 | Admin session unlocks controls | Log in as admin `0xf39F…2266` → `admin.html` | Three control cards visible, R1 defaults prefilled (10.00% / 100.00%), nine matrix rows "Available" | High |
+| ROLE-04 | Unapproved airline sees a pending notice | Log in with a fresh wallet → `airline.html` | Pending-approval notice, no flight creation form | Medium |
+| ROLE-05 | Approved airline can create and publish | Log in as `0x7099…79C8` → create flight → publish | Flight row appears, then moves to published state; both require wallet confirmation | High |
 | ROLE-06 | Admin cannot move tickets or money | Admin session on `marketplace.html` / `tickets.html` | No extra powers: only owner can list/cancel; admin has no transfer UI | High |
-| ROLE-07 | Wrong-chain writes blocked | Connect a wallet on a non-31337 chain | Inline "Switch network" prompt; no transaction is sent | Medium |
+| ROLE-07 | Wrong-chain writes blocked | Log in with a wallet on a non-31337 chain | Inline "Switch network" prompt; no transaction is sent | Medium |
+| ROLE-08 | Sign-in gate and logout | With MetaMask already authorizing an account, open `tickets.html` without pressing Login; press Login; press Logout | Page stays in its guest state until Login is pressed; after Login the ticket list loads; Logout returns the guest view and hides the private nav links | High |
 
 ## 3. Core workflows (PRD §15)
 
 | ID | Scenario | Steps | Expected result | Priority |
 |---|---|---|---|---|
 | CORE-01 | Book a seat | `flights.html` → Book → check both checkout boxes → Pay | Success panel with `ticket #1`, transaction hash, seat `S-1`, inventory drops to 4 of 5 | High |
-| CORE-02 | Ticket wallet | `tickets.html` as traveler | Card under *Active* with `Issued` badge, CID line + source tag ("mock fallback" when the upload endpoint is off), QR, verify link | High |
+| CORE-02 | Ticket wallet | `tickets.html`, log in as traveler | Card under *Active* with `Issued` badge, CID line + source tag ("mock fallback" when the upload endpoint is off), QR, verify link | High |
 | CORE-03 | Public verification | Open `verify.html?ticketId=1` (no wallet) | Shows state `Issued`, seat, operator/owner shortened, refund preview; FR-32 "never shown" note; no name/e-mail/passport fields | High |
 | CORE-04 | List for resale | `tickets.html` → List → publish at 0.11 | Split preview shows royalty/proceeds; card becomes `Listed` with *Cancel listing* | High |
-| CORE-05 | Third wallet buys | Connect buyer `0x90F7…3b906` → marketplace → Buy | Confirmation breakdown (FR-30), result shows price 0.1100 = royalty 0.0055 + seller 0.1045, ticket moves to buyer, listing disappears | High |
-| CORE-06 | Airline sees the royalty | `airline.html` as airline | Resale count 1, non-zero royalty total, one table row with the ticket | Medium |
+| CORE-05 | Third wallet buys | Log in as buyer `0x90F7…3b906` → marketplace → Buy | Confirmation breakdown (FR-30), result shows price 0.1100 = royalty 0.0055 + seller 0.1045, ticket moves to buyer, listing disappears | High |
+| CORE-06 | Airline sees the royalty | `airline.html`, log in as airline | Resale count 1, non-zero royalty total, one table row with the ticket | Medium |
 | CORE-07 | Cancel for a policy refund | Book a second seat → `tickets.html` → Cancel & refund | Preview shows 0.0800 / 0.0200 before sending; result shows `Cancelled`, refund, retained, hash; card moves to *Past & resolved*; seat returns to inventory | High |
 | CORE-08 | Departed flight blocks actions | Airline marks flight departed | Marketplace Buy disabled with "already departed" reason; checkout shows the departed notice; cancel/list buttons disabled with that reason | High |
 | CORE-09 | Boarding (`markUsed`) | Airline page → mark ticket used at/after departure − 2 h | Ticket becomes `Used`; terminal — cannot be cancelled or resold afterwards | Medium |
@@ -68,7 +74,7 @@
 | ID | Scenario | Steps | Expected result | Priority |
 |---|---|---|---|---|
 | ERR-01 | Rejected transaction wording | Trigger a contract revert (e.g. cancel a listed ticket) | Human message ("Only an issued ticket allows that action."), not a raw custom-error name or hex data | High |
-| ERR-02 | Provider/chain mismatch | Disconnect wallet, then reconnect on another chain | Inline guidance, no stuck spinner, buttons recover | Medium |
+| ERR-02 | Provider/chain mismatch | Log out, switch MetaMask to another chain, then log in again | Inline guidance, no stuck spinner, buttons recover | Medium |
 | ERR-03 | Upload endpoint unavailable | Stop `server/upload.js`, then book | Booking still completes with the tagged `mock fallback` CID (D-05) | Medium |
 | ERR-04 | Config missing | Delete/rename `contracts-config.js`, reload a page | "Contract configuration missing… run `npm run deploy`" notice, no exceptions in the console | Medium |
 | ERR-05 | Empty and filtered states | Clear all flights/listings; apply impossible filters | Distinct copy for "nothing on chain yet" vs "no match for these filters" on flights, marketplace, history, audit feed | Medium |

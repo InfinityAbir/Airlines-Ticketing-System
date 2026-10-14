@@ -8,7 +8,9 @@ node.log
 .playwright-mcp/
 test-results/
 playwright-report/
-Paper/*.pdf
+# The paper is unpublished work-in-progress: keep the whole directory out of git
+# until it is released, rather than only the built PDF.
+Paper/
 coverage/
 .env
 server/.env
