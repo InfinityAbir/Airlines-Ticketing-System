@@ -1,0 +1,342 @@
+{
+  "meta": {
+    "chainId": 31337,
+    "rpc": "http://127.0.0.1:8545 (HTTP JSON-RPC)",
+    "hardhat": "3.18.0",
+    "optimizer": "disabled (default)",
+    "compiler": "0.8.28",
+    "samples": {
+      "automine": 20,
+      "interval1s": 10,
+      "markDepartedAutomine": 10,
+      "markDepartedInterval1s": 3,
+      "burst": 100,
+      "readLatency": 100,
+      "readQps": 500
+    },
+    "blockIntervalMs": 1000,
+    "receiptPollMs": 25,
+    "blockGasLimit": 60000000,
+    "maxPurchasesPerBlock": 188,
+    "timestamp": "2026-10-04T12:10:08.882Z",
+    "out": "doc/perf-eval.json"
+  },
+  "deployGas": {
+    "AirlineRegistry": 1182327,
+    "FlightInventory": 2723856,
+    "AirTicketNFT": 4083982,
+    "TicketSettlement": 2488655,
+    "TicketMarketplace": 2670778,
+    "wiring": 170891
+  },
+  "deployGasContractsTotal": 13149598,
+  "latency": {
+    "automine": {
+      "purchase": {
+        "n": 20,
+        "min": 29.8,
+        "p50": 32.6,
+        "p95": 41.5,
+        "max": 41.7,
+        "mean": 33.9
+      },
+      "list": {
+        "n": 20,
+        "min": 26.3,
+        "p50": 30.4,
+        "p95": 37.2,
+        "max": 42.3,
+        "mean": 31.3
+      },
+      "buyListing": {
+        "n": 20,
+        "min": 31.1,
+        "p50": 33.4,
+        "p95": 35.4,
+        "max": 36,
+        "mean": 33.4
+      },
+      "cancel": {
+        "n": 20,
+        "min": 24.4,
+        "p50": 32.8,
+        "p95": 34.7,
+        "max": 35,
+        "mean": 31.9
+      },
+      "markDeparted": {
+        "n": 10,
+        "min": 15.9,
+        "p50": 28,
+        "p95": 33.4,
+        "max": 33.4,
+        "mean": 26.4
+      }
+    },
+    "interval1s": {
+      "purchase": {
+        "n": 10,
+        "min": 983.8,
+        "p50": 1027.1,
+        "p95": 1045.8,
+        "max": 1045.8,
+        "mean": 1019.2
+      },
+      "list": {
+        "n": 10,
+        "min": 985.2,
+        "p50": 1012.1,
+        "p95": 1042.4,
+        "max": 1042.4,
+        "mean": 1012.1
+      },
+      "buyListing": {
+        "n": 10,
+        "min": 977.4,
+        "p50": 1014.1,
+        "p95": 1033.3,
+        "max": 1033.3,
+        "mean": 1011
+      },
+      "cancel": {
+        "n": 10,
+        "min": 981.6,
+        "p50": 1030.9,
+        "p95": 1037.5,
+        "max": 1037.5,
+        "mean": 1015.6
+      },
+      "markDeparted": {
+        "n": 3,
+        "min": 985.3,
+        "p50": 1000.8,
+        "p95": 1029.8,
+        "max": 1029.8,
+        "mean": 1005.3
+      }
+    }
+  },
+  "reads": {
+    "getTicket": {
+      "n": 100,
+      "min": 11.6,
+      "p50": 25.2,
+      "p95": 28.6,
+      "max": 29.7,
+      "mean": 21.7
+    },
+    "getFlight": {
+      "n": 100,
+      "min": 12.7,
+      "p50": 16.6,
+      "p95": 25.9,
+      "max": 47.1,
+      "mean": 17.5
+    },
+    "calculateRefund": {
+      "n": 100,
+      "min": 13.6,
+      "p50": 16.7,
+      "p95": 20.2,
+      "max": 35.4,
+      "mean": 17
+    }
+  },
+  "readsRaw": {
+    "getTicket": {
+      "n": 100,
+      "min": 1.1,
+      "p50": 1.8,
+      "p95": 2.6,
+      "max": 14.3,
+      "mean": 1.9
+    },
+    "getFlight": {
+      "n": 100,
+      "min": 1,
+      "p50": 1.4,
+      "p95": 2.3,
+      "max": 3.8,
+      "mean": 1.5
+    },
+    "calculateRefund": {
+      "n": 100,
+      "min": 1.2,
+      "p50": 1.6,
+      "p95": 2.8,
+      "max": 25.8,
+      "mean": 2
+    }
+  },
+  "readQps": {
+    "count": 500,
+    "seconds": 8.45,
+    "qps": 59
+  },
+  "readQpsRaw": {
+    "count": 500,
+    "seconds": 0.6,
+    "qps": 827
+  },
+  "burst": {
+    "automine": {
+      "count": 100,
+      "submitSeconds": 1.11,
+      "observedSeconds": 1.16,
+      "observedP50Seconds": 1.16,
+      "inclusionSeconds": 1.1,
+      "tpsObserved": 86.09,
+      "tpsInclusion": 90.72,
+      "blocks": 100,
+      "txPerBlock": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "gasMeanPurchase": 317879
+    },
+    "interval1s": {
+      "count": 100,
+      "submitSeconds": 0.94,
+      "observedSeconds": 1.22,
+      "observedP50Seconds": 1.22,
+      "inclusionSeconds": 1.21,
+      "tpsObserved": 82.08,
+      "tpsInclusion": 82.91,
+      "blocks": 1,
+      "txPerBlock": [
+        100
+      ],
+      "gasMeanPurchase": 317875
+    }
+  },
+  "gas": {
+    "purchase": {
+      "n": 230,
+      "mean": 318192,
+      "min": 311586,
+      "max": 386325
+    },
+    "list": {
+      "n": 30,
+      "mean": 310302,
+      "min": 310302,
+      "max": 310302
+    },
+    "buyListing": {
+      "n": 30,
+      "mean": 173784,
+      "min": 168574,
+      "max": 190474
+    },
+    "cancel": {
+      "n": 30,
+      "mean": 180305,
+      "min": 179165,
+      "max": 196265
+    },
+    "markDeparted": {
+      "n": 13,
+      "mean": 33049,
+      "min": 33049,
+      "max": 33049
+    }
+  }
+}

@@ -10,54 +10,57 @@ const CONFIG_PATH = path.join(ROOT, "frontend", "assets", "js", "contracts-confi
 
 /// @notice Deploy Registry -> Inventory -> NFT -> Settlement -> Marketplace and wire them.
 /// @param ethers Hardhat ethers instance from `network.create()`.
-/// @return {Promise<{registry, inventory, nft, settlement, marketplace, addresses, deployer}>}
+/// @return {Promise<{registry, inventory, nft, settlement, marketplace, addresses, deployer,
+///                   deployGas}>} `deployGas` maps each contract name to the gasUsed of its
+///         deployment transaction, plus `wiring` (the authorization setup transactions).
 export async function deployStack(ethers) {
   const [deployer] = await ethers.getSigners();
+  const deployGas = {};
 
-  const Registry = await ethers.getContractFactory("AirlineRegistry");
-  const registry = await Registry.deploy(deployer.address);
-  await registry.waitForDeployment();
+  async function deploy(name, args) {
+    const Factory = await ethers.getContractFactory(name);
+    const contract = await Factory.deploy(...args);
+    const receipt = await contract.deploymentTransaction().wait();
+    deployGas[name] = Number(receipt.gasUsed);
+    return contract;
+  }
 
-  const Inventory = await ethers.getContractFactory("FlightInventory");
-  const inventory = await Inventory.deploy(await registry.getAddress(), deployer.address);
-  await inventory.waitForDeployment();
-
-  const NFT = await ethers.getContractFactory("AirTicketNFT");
-  const nft = await NFT.deploy(
+  const registry = await deploy("AirlineRegistry", [deployer.address]);
+  const inventory = await deploy("FlightInventory", [await registry.getAddress(), deployer.address]);
+  const nft = await deploy("AirTicketNFT", [
     await registry.getAddress(),
     await inventory.getAddress(),
-    deployer.address
-  );
-  await nft.waitForDeployment();
-
-  const Settlement = await ethers.getContractFactory("TicketSettlement");
-  const settlement = await Settlement.deploy(
-    await registry.getAddress(),
-    await inventory.getAddress(),
-    await nft.getAddress(),
-    deployer.address
-  );
-  await settlement.waitForDeployment();
-
-  const Marketplace = await ethers.getContractFactory("TicketMarketplace");
-  const marketplace = await Marketplace.deploy(
+    deployer.address,
+  ]);
+  const settlement = await deploy("TicketSettlement", [
     await registry.getAddress(),
     await inventory.getAddress(),
     await nft.getAddress(),
-    deployer.address
-  );
-  await marketplace.waitForDeployment();
+    deployer.address,
+  ]);
+  const marketplace = await deploy("TicketMarketplace", [
+    await registry.getAddress(),
+    await inventory.getAddress(),
+    await nft.getAddress(),
+    deployer.address,
+  ]);
 
   // Wire authorized parties (reserve/release + mint/invalidate + controlled transfers).
-  await (
-    await inventory.setAuthorizedParties(
-      await settlement.getAddress(),
-      await marketplace.getAddress()
-    )
-  ).wait();
-  await (await nft.setSettlement(await settlement.getAddress())).wait();
+  let wiring = 0n;
+  wiring += (
+    await (
+      await inventory.setAuthorizedParties(
+        await settlement.getAddress(),
+        await marketplace.getAddress()
+      )
+    ).wait()
+  ).gasUsed;
+  wiring += (await (await nft.setSettlement(await settlement.getAddress())).wait()).gasUsed;
   const MARKETPLACE_ROLE = await nft.MARKETPLACE_ROLE();
-  await (await nft.grantRole(MARKETPLACE_ROLE, await marketplace.getAddress())).wait();
+  wiring += (
+    await (await nft.grantRole(MARKETPLACE_ROLE, await marketplace.getAddress())).wait()
+  ).gasUsed;
+  deployGas.wiring = Number(wiring);
 
   const addresses = {
     AirlineRegistry: await registry.getAddress(),
@@ -67,7 +70,16 @@ export async function deployStack(ethers) {
     TicketMarketplace: await marketplace.getAddress(),
   };
 
-  return { registry, inventory, nft, settlement, marketplace, addresses, deployer: deployer.address };
+  return {
+    registry,
+    inventory,
+    nft,
+    settlement,
+    marketplace,
+    addresses,
+    deployer: deployer.address,
+    deployGas,
+  };
 }
 
 /// @notice Write frontend/assets/js/contracts-config.js (chainId + addresses + ABIs, no secrets).

@@ -12,6 +12,7 @@
     "deploy": "hardhat run scripts/deploy.js",
     "seed": "hardhat run scripts/seed.js",
     "eval": "hardhat run scripts/demo-eval.js",
+    "perf": "node scripts/perf-eval.js",
     "lint": "solhint contracts/**/*.sol",
     "scan": "node scripts/scan-secrets.js",
     "test:e2e": "playwright test",
