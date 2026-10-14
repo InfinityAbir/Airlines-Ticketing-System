@@ -20,6 +20,9 @@
     provider: null,
     signer: null,
   };
+  // A wallet may expose previously approved accounts through `eth_accounts`.
+  // Treat those as signed out until the person explicitly chooses Login here.
+  let appSessionActive = sessionStorage.getItem("airline-wallet-session") === "true";
   const listeners = [];
   let initStarted = false;
   // Resolves after the first refresh() settles so pages can gate on address/chain without racing.
@@ -63,6 +66,9 @@
 
   function read(name) {
     if (configMissing()) throw new Error("contracts-config.js missing — run the deploy script first.");
+    // Public pages (flights, marketplace, checkout preview) are readable without a
+    // wallet, so fall back to the plain JSON-RPC provider when none is injected.
+    if (!hasInjectedWallet() || !window.ethereum) return readPublic(name);
     if (!state.provider) state.provider = new ethers.BrowserProvider(window.ethereum, "any");
     return new ethers.Contract(config.addresses[name], config.abis[name], state.provider);
   }
@@ -103,6 +109,14 @@
   }
 
   async function refresh() {
+    if (!appSessionActive) {
+      state.address = null;
+      state.chainId = null;
+      state.signer = null;
+      state.role = "guest";
+      notify();
+      return;
+    }
     if (!hasInjectedWallet() || configMissing()) {
       state.address = null;
       state.chainId = null;
@@ -114,6 +128,10 @@
       state.provider = new ethers.BrowserProvider(window.ethereum, "any");
       const accounts = await window.ethereum.request({ method: "eth_accounts" });
       state.address = accounts && accounts.length ? ethers.getAddress(accounts[0]) : null;
+      if (!state.address) {
+        appSessionActive = false;
+        sessionStorage.removeItem("airline-wallet-session");
+      }
       const net = await state.provider.getNetwork();
       state.chainId = Number(net.chainId);
       state.signer = state.address ? await state.provider.getSigner() : null;
@@ -153,6 +171,8 @@
     try {
       state.provider = new ethers.BrowserProvider(window.ethereum, "any");
       await window.ethereum.request({ method: "eth_requestAccounts" });
+      appSessionActive = true;
+      sessionStorage.setItem("airline-wallet-session", "true");
       await refresh();
       await ensureChain(true);
       return Boolean(state.address);
@@ -163,6 +183,17 @@
       state.connecting = false;
       notify();
     }
+  }
+
+  function logout() {
+    appSessionActive = false;
+    sessionStorage.removeItem("airline-wallet-session");
+    state.address = null;
+    state.chainId = null;
+    state.signer = null;
+    state.role = "guest";
+    notify();
+    window.UI.toast("info", "You are signed out of this app. MetaMask remains connected in your browser.");
   }
 
   /// @notice Switch the wallet to the configured chain; add it if unknown (FR-03).
@@ -240,24 +271,48 @@
   };
 
   function renderChrome() {
-    const connectBtn = document.querySelector('[data-role="connect"]');
-    if (connectBtn) {
+    const isAuthenticated = Boolean(state.address);
+    document.querySelectorAll('[data-role="connect"], [data-role="login"]').forEach((connectBtn) => {
       if (state.connecting) {
         connectBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Connecting…';
         connectBtn.disabled = true;
       } else {
         connectBtn.disabled = false;
-        connectBtn.textContent = state.address
-          ? window.UI.shortAddress(state.address)
-          : "Connect wallet";
-        connectBtn.title = state.address ? state.address : "Connect your wallet";
+        connectBtn.textContent = connectBtn.dataset.role === "login" ? "Login with MetaMask" : state.address ? window.UI.shortAddress(state.address) : "Connect wallet";
+        connectBtn.title = state.address ? state.address : "Open MetaMask to sign in";
+        if (connectBtn.dataset.role === "login") {
+          connectBtn.toggleAttribute("hidden", isAuthenticated);
+        }
       }
-    }
+    });
+
+    document.querySelectorAll('[data-role="logout"]').forEach((logoutBtn) => {
+      logoutBtn.toggleAttribute("hidden", !isAuthenticated);
+      logoutBtn.title = state.address ? `Sign out ${window.UI.shortAddress(state.address)}` : "Sign out";
+    });
 
     const roleChip = document.querySelector('[data-role="role"]');
     if (roleChip) {
       roleChip.textContent = ROLE_LABELS[state.role] || "Guest";
     }
+
+    // Navbar visibility (role-based routing as convenience only — every privileged
+    // write re-checks on-chain, FR-04):
+    //   Flights / Marketplace / Verify        public (FR-31: the verifier needs no wallet)
+    //   My Tickets                            any connected wallet
+    //   Airline                               airline operator or administrator
+    //   Admin Console                         administrator only
+    document
+      .querySelectorAll('.nav-links a[href="tickets.html"]')
+      .forEach((link) => link.closest("li").toggleAttribute("hidden", !isAuthenticated));
+    document
+      .querySelectorAll('.nav-links a[href="airline.html"]')
+      .forEach((link) =>
+        link.closest("li").toggleAttribute("hidden", state.role !== "airline" && state.role !== "admin")
+      );
+    document
+      .querySelectorAll('.nav-links a[href="admin.html"]')
+      .forEach((link) => link.closest("li").toggleAttribute("hidden", state.role !== "admin"));
 
     const networkPill = document.querySelector('[data-role="network"]');
     if (networkPill) {
@@ -279,18 +334,18 @@
     const networkLine = document.querySelector('[data-role="network-line"]');
     if (networkLine) {
       if (configMissing()) {
-        networkLine.innerHTML =
-          '<span class="text-danger">contracts-config.js not found — run <code>npm run deploy</code>, then reload.</span>';
+        networkLine.innerHTML = '<span class="text-danger">Contract configuration unavailable</span>';
       } else {
-        const connected = state.address
-          ? `connected ${window.UI.shortAddress(state.address)} on chain <strong>${state.chainId ?? "—"}</strong>`
-          : "wallet not connected";
+        const chain = `Hardhat ${config.chainId}`;
+        const wallet = state.address
+          ? `Wallet ${window.UI.shortAddress(state.address)}`
+          : "Wallet not connected";
         const status = isSupportedChain()
-          ? '<span class="text-ok">writes enabled</span>'
+          ? '<span class="text-ok">Writes enabled</span>'
           : state.address
-            ? '<span class="text-danger">writes blocked — switch to Hardhat 31337</span>'
-            : "writes blocked until a wallet connects";
-        networkLine.innerHTML = `Contracts loaded for chain <strong>${config.chainId}</strong> · ${connected} · ${status}`;
+            ? '<span class="text-danger">Switch network</span>'
+            : "Writes blocked";
+        networkLine.innerHTML = `<span>${chain}</span><span class="network-separator">·</span><span>${wallet}</span><span class="network-separator">·</span>${status}`;
       }
     }
   }
@@ -299,8 +354,12 @@
     if (initStarted) return;
     initStarted = true;
 
-    document.querySelectorAll('[data-role="connect"]').forEach((btn) => {
+    document.querySelectorAll('[data-role="connect"], [data-role="login"]').forEach((btn) => {
       btn.addEventListener("click", async () => {
+        if (btn.dataset.role === "login") {
+          await connect();
+          return;
+        }
         if (state.address) {
           try {
             await navigator.clipboard.writeText(state.address);
@@ -314,16 +373,23 @@
       });
     });
 
+    document.querySelectorAll('[data-role="logout"]').forEach((btn) => {
+      btn.addEventListener("click", logout);
+    });
+
     document.querySelectorAll('[data-role="switch-network"]').forEach((btn) => {
       btn.addEventListener("click", () => ensureChain());
     });
 
     if (hasInjectedWallet() && typeof window.ethereum.on === "function") {
-      window.ethereum.on("accountsChanged", () => refresh());
+      window.ethereum.on("accountsChanged", () => {
+        if (appSessionActive) refresh();
+      });
       window.ethereum.on("chainChanged", () => refresh());
     }
 
     window.UI.bindPendingLinks(document);
+    window.UI.bindVerifyHandoff(document);
     refresh()
       .catch((err) => console.error("initial wallet refresh failed", err))
       .finally(() => readyResolve());
@@ -339,6 +405,7 @@
     refresh,
     onChange,
     connect,
+    logout,
     ensureChain,
     requireWrite,
     read,

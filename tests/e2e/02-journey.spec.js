@@ -9,6 +9,7 @@ import {
   norm,
   pageErrors,
   shot,
+  signIn,
   text,
   waitText,
   walletPage,
@@ -75,8 +76,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
   test("step 2 - wallet and public verifier expose state without personal data", async ({
     browser,
   }) => {
-    const wallet = await walletPage(browser, "traveler");
+    const wallet = await walletPage(browser, "traveler", "connected");
     await wallet.goto("/tickets.html");
+    await signIn(wallet);
     await wallet.waitForSelector('article[data-token="1"]', { timeout: 45_000 });
     const card = norm(await text(wallet, 'article[data-token="1"]'));
     expect(card).toMatch(/Issued/);
@@ -100,8 +102,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
   });
 
   test("step 3 - resale listing enforces the 120% cap before publishing", async ({ browser }) => {
-    const page = await walletPage(browser, "traveler");
+    const page = await walletPage(browser, "traveler", "connected");
     await page.goto("/tickets.html");
+    await signIn(page);
     await page.waitForSelector('[data-action="list"][data-token="1"]', { timeout: 45_000 });
     await page.click('[data-action="list"][data-token="1"]');
     await page.waitForSelector(".modal-backdrop #list-price", { timeout: 30_000 });
@@ -139,8 +142,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await guest.waitForSelector("[data-buy]", { timeout: 30_000 });
     await closeQuiet(guest);
 
-    const buyer = await walletPage(browser, "buyer");
+    const buyer = await walletPage(browser, "buyer", "connected");
     await buyer.goto("/marketplace.html");
+    await signIn(buyer);
     await buyer.waitForSelector("[data-buy]", { timeout: 45_000 });
     await buyer.click("[data-buy]");
     await buyer.waitForSelector('.modal-backdrop [data-role="ok"]', { timeout: 30_000 });
@@ -166,14 +170,25 @@ test.describe("PRD 15 demo journey (browser)", () => {
   });
 
   test("step 5 - airline dashboard reports the settled resale royalty", async ({ browser }) => {
-    const page = await walletPage(browser, "airline");
+    const page = await walletPage(browser, "airline", "connected");
     await page.goto("/airline.html");
+    await signIn(page);
     await page.waitForSelector("#resale-card", { timeout: 45_000 });
     await waitText(page, "#stat-resales", "1");
     expect(norm(await text(page, "#stat-resales"))).toBe("1");
     const royalty = norm(await text(page, "#stat-royalty"));
     expect(royalty).not.toBe("-");
     expect(royalty.replace(/[^0-9]/g, "")).toMatch(/[1-9]/);
+    // Stats are written before the royalty table body, which still holds shimmer
+    // placeholders until the listing details resolve — wait for the final rows.
+    await page.waitForFunction(
+      () => {
+        const body = document.querySelector("#resale-body");
+        return Boolean(body) && !body.querySelector(".skeleton-row") && body.querySelectorAll("tr").length > 0;
+      },
+      null,
+      { timeout: 45_000 }
+    );
     const rows = await page.$$("#resale-body tr");
     expect(rows.length).toBe(1);
     await shot(page, "10-journey-airline-royalty");
@@ -181,8 +196,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
   });
 
   test("step 6 - buyer and seller histories both record the resale", async ({ browser }) => {
-    const buyer = await walletPage(browser, "buyer");
+    const buyer = await walletPage(browser, "buyer", "connected");
     await buyer.goto("/tickets.html");
+    await signIn(buyer);
     await buyer.waitForSelector('article[data-token="1"]', { timeout: 45_000 });
     expect(norm(await text(buyer, 'article[data-token="1"]'))).toMatch(/Issued/);
     await buyer.selectOption("#history-filter", "sale");
@@ -190,8 +206,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     expect(await text(buyer, "#history-body")).toMatch(/bought for/i);
     await closeQuiet(buyer);
 
-    const seller = await walletPage(browser, "traveler");
+    const seller = await walletPage(browser, "traveler", "connected");
     await seller.goto("/tickets.html");
+    await signIn(seller);
     await seller.waitForSelector("#history-filter", { timeout: 45_000 });
     expect(await seller.$('article[data-token="1"]')).toBeNull(); // sold, no longer owned
     await seller.selectOption("#history-filter", "sale");
@@ -205,8 +222,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     expect(booked.tokenId).toBe(2);
     await closeQuiet(booked.page);
 
-    const page = await walletPage(browser, "traveler");
+    const page = await walletPage(browser, "traveler", "connected");
     await page.goto("/tickets.html");
+    await signIn(page);
     await page.waitForSelector('[data-action="cancel"][data-token="2"]', { timeout: 45_000 });
     await page.click('[data-action="cancel"][data-token="2"]');
     await page.waitForSelector('.modal-backdrop [data-role="ok"]', { timeout: 30_000 });
@@ -233,8 +251,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
   });
 
   test("step 8 - the resold ticket relists and a fresh seat is booked", async ({ browser }) => {
-    const seller = await walletPage(browser, "buyer");
+    const seller = await walletPage(browser, "buyer", "connected");
     await seller.goto("/tickets.html");
+    await signIn(seller);
     await seller.waitForSelector('[data-action="list"][data-token="1"]', { timeout: 45_000 });
     await seller.click('[data-action="list"][data-token="1"]');
     await seller.waitForSelector(".modal-backdrop #list-price", { timeout: 30_000 });
@@ -254,8 +273,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     browser,
   }) => {
     // Operator marks the flight departed (pause-equivalent terminal guard for the demo).
-    const airline = await walletPage(browser, "airline");
+    const airline = await walletPage(browser, "airline", "connected");
     await airline.goto("/airline.html");
+    await signIn(airline);
     await airline.waitForSelector(`[data-action="depart"][data-flight="${FLIGHT}"]`, {
       timeout: 45_000,
     });
@@ -287,8 +307,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await closeQuiet(checkout);
 
     // 3) Cancelling the still-Issued ticket #3 is disabled with the departure reason.
-    const canceller = await walletPage(browser, "traveler");
+    const canceller = await walletPage(browser, "traveler", "connected");
     await canceller.goto("/tickets.html");
+    await signIn(canceller);
     await canceller.waitForSelector('[data-action="cancel"][data-token="3"]', { timeout: 45_000 });
     const cancelBtn = canceller.locator('[data-action="cancel"][data-token="3"]');
     expect(await cancelBtn.isDisabled()).toBe(true);

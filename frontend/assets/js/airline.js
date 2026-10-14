@@ -281,6 +281,7 @@
     document.getElementById("stat-approval").innerHTML = approved
       ? '<span class="badge badge-ok">Approved</span>'
       : '<span class="badge badge-idle">Pending</span>';
+    UI.statsLoading(statsRow, false);
     statsRow.hidden = false;
     renderWithdraw();
   }
@@ -448,8 +449,8 @@
   function renderResaleEmpty(message) {
     resaleBody.innerHTML = `<tr><td colspan="7" class="empty-state">${UI.escapeHtml(message)}</td></tr>`;
     statResales.textContent = "0";
-    statRoyalty.textContent = UI.ethFormat(0n);
-    statResaleGross.textContent = UI.ethFormat(0n);
+    statRoyalty.innerHTML = UI.ethFormat(0n);
+    statResaleGross.innerHTML = UI.ethFormat(0n);
   }
 
   async function renderResales(address) {
@@ -536,6 +537,10 @@
   async function load() {
     if (loading) return;
     loading = true;
+    UI.statsLoading(statsRow, true);
+    UI.skeletonRows(inventoryBody, 7, 4);
+    UI.skeletonRows(bookingsBody, 6, 3);
+    UI.skeletonRows(resaleBody, 7, 3);
     try {
       await Wallet.ready;
       if (Wallet.configMissing()) {
@@ -553,7 +558,8 @@
       }
       if (!Wallet.hasInjectedWallet() || !Wallet.state.address) {
         setNotice(
-          '<div class="notice"><strong>Connect your wallet</strong> to see your flights and create new ones. ' +
+          '<div class="notice notice-info"><strong>Airline operator space.</strong> ' +
+            "Connect an approved airline operator wallet to manage flights, inventory and revenue. " +
             '<button type="button" class="btn btn-primary btn-sm" id="inline-connect">Connect wallet</button></div>'
         );
         const inline = document.getElementById("inline-connect");
@@ -566,6 +572,26 @@
         renderResaleEmpty("Wallet not connected.");
         return;
       }
+      // Role gate: only approved airline operators (and the administrator) may use
+      // this space. Convenience only — the contracts re-check every write (FR-04).
+      if (Wallet.state.role !== "airline" && Wallet.state.role !== "admin") {
+        setNotice(
+          `<div class="notice notice-warn"><strong>Not authorized for this space.</strong> ` +
+            `Airline operations are limited to approved airline operator wallets — this wallet's role is ` +
+            `<strong>${UI.escapeHtml(Wallet.roleLabel())}</strong>. ` +
+            `<a href="flights.html">Flights</a>, <a href="marketplace.html">Marketplace</a> and ` +
+            `<a href="tickets.html">My Tickets</a> remain open to you.</div>`
+        );
+        createCard.hidden = true;
+        statsRow.hidden = true;
+        withdrawCard.hidden = true;
+        inventoryBody.innerHTML =
+          '<tr><td colspan="7" class="empty-state">Airline operator access required.</td></tr>';
+        bookingsBody.innerHTML =
+          '<tr><td colspan="6" class="empty-state">Airline operator access required.</td></tr>';
+        renderResaleEmpty("Airline operator access required.");
+        return;
+      }
       if (!Wallet.isSupportedChain()) {
         setNotice(
           `<div class="notice notice-warn"><strong>Wrong network.</strong> Switch to Hardhat chain ${Wallet.expectedChainId()}. ` +
@@ -575,6 +601,10 @@
         if (sw) sw.addEventListener("click", () => Wallet.ensureChain());
         createCard.hidden = true;
         withdrawCard.hidden = true;
+        statsRow.hidden = true;
+        inventoryBody.innerHTML = '<tr><td colspan="7" class="empty-state">Switch to the Hardhat network to load your flights.</td></tr>';
+        bookingsBody.innerHTML = '<tr><td colspan="6" class="empty-state">Switch to the Hardhat network to load bookings.</td></tr>';
+        renderResaleEmpty("Switch to the Hardhat network to load resale royalties.");
         return;
       }
 
@@ -582,6 +612,7 @@
       const registry = Wallet.read("AirlineRegistry");
       const inventory = Wallet.read("FlightInventory");
       const settlement = Wallet.read("TicketSettlement");
+
 
       [platformPaused, approved, limits.maxRoyaltyBps, limits.maxRefundBps] = await Promise.all([
         registry.paused().catch(() => false),
@@ -638,8 +669,14 @@
           UI.escapeHtml(UI.revertMessage(err, Wallet.allContracts())) +
           " Is the Hardhat node running?</div>"
       );
+      inventoryBody.innerHTML = '<tr><td colspan="7" class="empty-state">Could not load flights.</td></tr>';
+      bookingsBody.innerHTML = '<tr><td colspan="6" class="empty-state">Could not load bookings.</td></tr>';
+      renderResaleEmpty("Could not load resale royalties.");
+      statsRow.hidden = true;
     } finally {
       loading = false;
+      [inventoryBody, bookingsBody, resaleBody].forEach(UI.clearBusy);
+      UI.statsLoading(statsRow, false);
     }
   }
 

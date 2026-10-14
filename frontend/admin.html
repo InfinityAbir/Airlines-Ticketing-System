@@ -24,13 +24,14 @@
           <li><a href="marketplace.html">Marketplace</a></li>
           <li><a href="tickets.html">My Tickets</a></li>
           <li><a href="airline.html">Airline</a></li>
-          <li><a href="admin.html" aria-current="page">Admin</a></li>
+          <li><a href="admin.html" aria-current="page">Admin Console</a></li>
           <li><a href="verify.html">Verify</a></li>
         </ul>
         <div class="nav-right">
           <span class="pill pill-idle" data-role="network">Checking network…</span>
           <span class="role-chip" data-role="role">Guest</span>
-          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+          <button type="button" class="btn btn-primary btn-sm wallet-login" data-role="login">Login with MetaMask</button>
+          <button type="button" class="btn btn-ghost btn-sm wallet-logout" data-role="logout" hidden>Logout</button>
         </div>
       </div>
     </nav>
@@ -52,26 +53,26 @@
     <div id="page-notices" class="stack mb-0" role="status" aria-live="polite"></div>
 
     <div class="grid grid-4" id="stats-row" hidden>
-      <div class="stat">
+      <a class="stat stat-link" href="#pause-card" aria-label="Open emergency controls">
         <div class="stat-label">Platform</div>
         <div class="stat-value" id="stat-platform">—</div>
         <div class="stat-sub">registry pause switch</div>
-      </div>
-      <div class="stat">
+      </a>
+      <a class="stat stat-link" href="#approvals-card" aria-label="Open airline approvals">
         <div class="stat-label">Airlines approved</div>
         <div class="stat-value" id="stat-airlines">—</div>
         <div class="stat-sub">operator wallets live now</div>
-      </div>
-      <div class="stat">
+      </a>
+      <a class="stat stat-link" href="flights.html" aria-label="Browse flights">
         <div class="stat-label">Flights</div>
         <div class="stat-value" id="stat-flights">—</div>
         <div class="stat-sub">created on-chain</div>
-      </div>
-      <div class="stat">
+      </a>
+      <a class="stat stat-link" href="tickets.html" aria-label="Open issued tickets">
         <div class="stat-label">Tickets minted</div>
         <div class="stat-value" id="stat-tickets">—</div>
         <div class="stat-sub">NFT tickets issued</div>
-      </div>
+      </a>
     </div>
 
     <section class="card mt-4" id="approvals-card" aria-labelledby="approvals-title" hidden>
@@ -80,7 +81,7 @@
         <span class="xsmall muted">FR-06 — approve, deactivate, reactivate operator wallets</span>
       </div>
       <form id="approve-form" novalidate>
-        <div class="filters">
+        <div class="filters filters-lookup">
           <div class="field">
             <label for="f-wallet">Operator wallet address</label>
             <input type="text" id="f-wallet" placeholder="0x…" autocomplete="off" spellcheck="false">
@@ -98,7 +99,7 @@
               <th scope="col">Status</th>
               <th scope="col">Flights</th>
               <th scope="col">Last registry event</th>
-              <th scope="col">Actions</th>
+              <th scope="col" class="actions">Actions</th>
             </tr>
           </thead>
           <tbody id="approvals-body"></tbody>
@@ -116,36 +117,47 @@
         <h2 id="limits-title">Platform limits</h2>
         <span class="xsmall muted">Prototype-wide caps read by every downstream contract</span>
       </div>
-      <div class="grid grid-2">
-        <dl class="kv">
-          <dt>Maximum resale royalty</dt>
-          <dd id="limit-royalty-now">—</dd>
-          <dt>Maximum refund rate</dt>
-          <dd id="limit-refund-now">—</dd>
-          <dt>Last updated</dt>
-          <dd id="limit-updated">—</dd>
-        </dl>
-        <form id="limits-form" novalidate>
-          <div class="form-grid">
-            <div class="field">
-              <label for="f-royalty-cap">Max resale royalty (%)</label>
-              <input type="number" id="f-royalty-cap" min="0" max="100" step="0.5">
-              <span class="hint">Caps every flight's royalty — R1 default 10.00%</span>
-              <span class="error" data-error-for="f-royalty-cap"></span>
-            </div>
-            <div class="field">
-              <label for="f-refund-cap">Max refund rate (%)</label>
-              <input type="number" id="f-refund-cap" min="0" max="100" step="5">
-              <span class="hint">Caps every flight's refund policy — R1 default 100.00%</span>
-              <span class="error" data-error-for="f-refund-cap"></span>
-            </div>
-          </div>
-          <div class="mt-4 row-between">
-            <button type="submit" class="btn btn-primary" id="limits-btn">Save limits</button>
-            <span class="xsmall muted">0–100% (0–10000 basis points). The contract rejects anything above 100%.</span>
-          </div>
-        </form>
+      <div class="grid grid-3">
+        <div class="stat">
+          <div class="stat-label">Maximum resale royalty</div>
+          <div class="stat-value" id="limit-royalty-now">—</div>
+          <div class="stat-sub">Cap applied to every flight's royalty</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Maximum refund rate</div>
+          <div class="stat-value" id="limit-refund-now">—</div>
+          <div class="stat-sub">Cap applied to every flight's refund policy</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Last updated</div>
+          <div class="stat-value stat-value-quiet" id="limit-updated">—</div>
+          <div class="stat-sub">On-chain limits record</div>
+        </div>
       </div>
+      <form id="limits-form" class="limits-panel" novalidate>
+        <div class="limits-panel-head">
+          <strong>Edit caps</strong>
+          <span class="xsmall muted">0–100% (0–10000 basis points). The contract rejects anything above 100%.</span>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="f-royalty-cap">Max resale royalty (%)</label>
+            <input type="number" id="f-royalty-cap" min="0" max="100" step="0.5">
+            <span class="hint">Caps every flight's royalty — R1 default 10.00%</span>
+            <span class="error" data-error-for="f-royalty-cap"></span>
+          </div>
+          <div class="field">
+            <label for="f-refund-cap">Max refund rate (%)</label>
+            <input type="number" id="f-refund-cap" min="0" max="100" step="5">
+            <span class="hint">Caps every flight's refund policy — R1 default 100.00%</span>
+            <span class="error" data-error-for="f-refund-cap"></span>
+          </div>
+        </div>
+        <div class="mt-4 row-between">
+          <button type="submit" class="btn btn-primary" id="limits-btn">Save limits</button>
+          <span class="xsmall muted">Changes take effect immediately for every page.</span>
+        </div>
+      </form>
       <p class="xsmall muted mt-3 mb-0">
         Lowering a cap takes effect immediately: a flight whose royalty is now above the cap can no
         longer be listed for resale until the cap is raised again or the flight is cancelled.
@@ -241,7 +253,7 @@
             <tr>
               <th scope="col">Time</th>
               <th scope="col">Event</th>
-              <th scope="col">Details</th>
+              <th scope="col">Summary</th>
               <th scope="col">Transaction</th>
             </tr>
           </thead>

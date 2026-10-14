@@ -65,6 +65,9 @@
       return;
     }
 
+    UI.skeletonPanel(resultEl, 5);
+    resultEl.hidden = false;
+
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Checking…';
@@ -163,6 +166,7 @@
       );
       resultEl.hidden = true;
     } finally {
+      UI.clearBusy(resultEl);
       if (btn) {
         btn.disabled = false;
         btn.textContent = "Verify ticket";
@@ -177,6 +181,18 @@
 
   // Deep link support: verify.html?ticketId=1 (also what the ticket QR encodes).
   const params = new URLSearchParams(window.location.search);
+  // Restore the ticket ID carried from the wallet page when the server dropped it
+  // from the query during a clean-URL redirect, and put it back into the URL.
+  if (!params.get("ticketId")) {
+    const carried = sessionStorage.getItem("verify.ticket");
+    if (carried) {
+      params.set("ticketId", carried);
+      const url = new URL(window.location.href);
+      url.searchParams.set("ticketId", carried);
+      window.history.replaceState(null, "", url);
+    }
+  }
+  sessionStorage.removeItem("verify.ticket");
   const linked = params.get("ticketId");
   if (linked != null && linked !== "") {
     input.value = linked;

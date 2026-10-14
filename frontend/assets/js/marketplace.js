@@ -28,6 +28,7 @@
         'Run <code>npm run deploy</code> in the project root, then reload this page.</div>'
     );
     grid.innerHTML = "";
+    UI.clearBusy(grid);
     resultCount.textContent = "—";
   }
 
@@ -141,6 +142,7 @@
   }
 
   function render() {
+    UI.clearBusy(grid);
     const visible = applyFilters(rows);
     resultCount.textContent =
       `${visible.length} listing${visible.length === 1 ? "" : "s"}` +
@@ -167,6 +169,7 @@
     if (loading) return;
     loading = true;
     resultCount.textContent = "Loading…";
+    UI.skeletonCards(grid, 3);
     try {
       if (Wallet.configMissing()) {
         showConfigNotice();
@@ -230,6 +233,8 @@
           UI.escapeHtml(UI.revertMessage(err)) +
           " Is the Hardhat node running?</div>"
       );
+      grid.innerHTML = "";
+      UI.clearBusy(grid);
       resultCount.textContent = "—";
     } finally {
       loading = false;

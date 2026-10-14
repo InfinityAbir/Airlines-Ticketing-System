@@ -24,13 +24,14 @@
           <li><a href="marketplace.html">Marketplace</a></li>
           <li><a href="tickets.html">My Tickets</a></li>
           <li><a href="airline.html" aria-current="page">Airline</a></li>
-          <li><a href="admin.html">Admin</a></li>
+          <li><a href="admin.html">Admin Console</a></li>
           <li><a href="verify.html">Verify</a></li>
         </ul>
         <div class="nav-right">
           <span class="pill pill-idle" data-role="network">Checking network…</span>
           <span class="role-chip" data-role="role">Guest</span>
-          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+          <button type="button" class="btn btn-primary btn-sm wallet-login" data-role="login">Login with MetaMask</button>
+          <button type="button" class="btn btn-ghost btn-sm wallet-logout" data-role="logout" hidden>Logout</button>
         </div>
       </div>
     </nav>
@@ -49,26 +50,26 @@
     <div id="page-notices" class="stack mb-0" role="status" aria-live="polite"></div>
 
     <div class="grid grid-4" id="stats-row" hidden>
-      <div class="stat">
+      <a class="stat stat-link" href="#inventory-title" aria-label="View your flight inventory">
         <div class="stat-label">Flights created</div>
         <div class="stat-value" id="stat-flights">—</div>
         <div class="stat-sub">by this wallet</div>
-      </div>
-      <div class="stat">
+      </a>
+      <a class="stat stat-link" href="#bookings-title" aria-label="View recent bookings">
         <div class="stat-label">Seats booked</div>
         <div class="stat-value" id="stat-seats">—</div>
         <div class="stat-sub">across your flights</div>
-      </div>
-      <div class="stat">
+      </a>
+      <a class="stat stat-link" href="#withdraw-card" aria-label="View accrued revenue">
         <div class="stat-label">Accrued revenue</div>
         <div class="stat-value" id="stat-accrued">—</div>
         <div class="stat-sub">test ETH on settlement</div>
-      </div>
-      <div class="stat">
+      </a>
+      <a class="stat stat-link" href="admin.html#approvals-card" aria-label="View airline approval details">
         <div class="stat-label">Approval</div>
         <div class="stat-value" id="stat-approval">—</div>
         <div class="stat-sub">airline operator status</div>
-      </div>
+      </a>
     </div>
 
     <section class="card mt-4" id="withdraw-card" aria-labelledby="withdraw-title" hidden>
@@ -190,7 +191,7 @@
               <th scope="col">Seats</th>
               <th scope="col">Gross booked</th>
               <th scope="col">State</th>
-              <th scope="col">Actions</th>
+              <th scope="col" class="actions">Actions</th>
             </tr>
           </thead>
           <tbody id="inventory-body"></tbody>

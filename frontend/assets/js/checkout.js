@@ -5,6 +5,18 @@
   "use strict";
 
   const params = new URLSearchParams(window.location.search);
+  // Restore the selection carried from the flights page when the server dropped it
+  // from the query during a clean-URL redirect, and put it back into the URL.
+  if (!params.get("flight")) {
+    const carried = sessionStorage.getItem("checkout.flight");
+    if (carried) {
+      params.set("flight", carried);
+      const url = new URL(window.location.href);
+      url.searchParams.set("flight", carried);
+      window.history.replaceState(null, "", url);
+    }
+  }
+  sessionStorage.removeItem("checkout.flight");
   const flightId = Number(params.get("flight"));
 
   const notices = document.getElementById("page-notices");
@@ -101,6 +113,8 @@
       return;
     }
     try {
+      UI.skeletonLines(summaryEl, 5);
+      UI.skeletonLines(paymentEl, 4);
       const inventory = Wallet.read("FlightInventory");
       const registry = Wallet.read("AirlineRegistry");
       const settlement = Wallet.read("TicketSettlement");
@@ -114,6 +128,10 @@
         ]).then(([r, s]) => r || s),
       ]);
       if (!flight) {
+        summaryEl.innerHTML = "";
+        paymentEl.innerHTML = "";
+        UI.clearBusy(summaryEl);
+        UI.clearBusy(paymentEl);
         setNotice(
           '<div class="notice notice-danger"><strong>Unknown flight.</strong> ' +
             'That flight id does not exist. <a href="flights.html">Back to flights</a></div>'
@@ -145,6 +163,10 @@
       updateButton();
     } catch (err) {
       console.error(err);
+      summaryEl.innerHTML = "";
+      paymentEl.innerHTML = "";
+      UI.clearBusy(summaryEl);
+      UI.clearBusy(paymentEl);
       setNotice(
         '<div class="notice notice-danger"><strong>Could not load this flight.</strong> ' +
           UI.escapeHtml(UI.revertMessage(err, Wallet.allContracts())) +
@@ -156,6 +178,7 @@
   }
 
   function renderSummary() {
+    UI.clearBusy(summaryEl);
     const badge = UI.flightBadge(flight, flight.salesOpen || flight.departed || flight.cancelled);
     stateEl.innerHTML = badge;
     const sold = Number(flight.seatCapacity) - Number(flight.seatsAvailable);
@@ -176,6 +199,7 @@
   }
 
   function renderPayment() {
+    UI.clearBusy(paymentEl);
     const { refund, retained } = refundPreview();
     const refundPct = (Number(flight.refundBps) / 100).toFixed(0);
     paymentEl.innerHTML = `

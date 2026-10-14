@@ -5,6 +5,7 @@ import {
   deployAndSeed,
   pageErrors,
   shot,
+  signIn,
   text,
   waitText,
   walletPage,
@@ -32,6 +33,34 @@ test.describe("public surfaces (guest)", () => {
     expect(grid).toMatch(/0 of 5 seats booked/);
     expect(grid).toMatch(/0\.1000\s*ETH/);
     await shot(page, "01-flights-guest");
+    await closeQuiet(page);
+  });
+
+  test("an approved wallet stays signed out until Login is clicked, and Logout clears it", async ({
+    browser,
+  }) => {
+    const page = await walletPage(browser, "traveler", "connected");
+    await page.goto("/flights.html");
+    await page.waitForSelector("#flights-grid", { timeout: 30_000 });
+
+    // The shim has already authorized the account, yet the app must still treat the
+    // session as signed out: a wallet that MetaMask auto-authorizes is not a session
+    // the person started here (FR-04).
+    await expect(page.locator('[data-role="role"]')).toHaveText("Guest");
+    await expect(page.locator('[data-role="login"]')).toBeVisible();
+    await expect(page.locator('[data-role="logout"]')).toBeHidden();
+
+    await signIn(page);
+    await expect(page.locator('[data-role="role"]')).toHaveText("Traveler");
+    await expect(page.locator('[data-role="login"]')).toBeHidden();
+    await expect(page.locator('[data-role="logout"]')).toBeVisible();
+    // Role-based nav is a convenience only; the private surfaces are the point.
+    await expect(page.locator('.nav-links a[href="tickets.html"]')).toBeVisible();
+
+    await page.click('[data-role="logout"]');
+    await expect(page.locator('[data-role="role"]')).toHaveText("Guest");
+    await expect(page.locator('[data-role="login"]')).toBeVisible();
+    await expect(page.locator('.nav-links a[href="tickets.html"]')).toBeHidden();
     await closeQuiet(page);
   });
 

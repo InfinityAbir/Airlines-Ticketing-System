@@ -21,6 +21,7 @@
         'Run <code>npm run deploy</code> in the project root, then reload this page.</div>'
     );
     grid.innerHTML = "";
+    UI.clearBusy(grid);
     resultCount.textContent = "—";
   }
 
@@ -28,6 +29,7 @@
     if (loading) return;
     loading = true;
     resultCount.textContent = "Loading…";
+    UI.skeletonCards(grid, 3);
     try {
       if (Wallet.configMissing()) {
         showConfigNotice();
@@ -74,6 +76,8 @@
           UI.escapeHtml(UI.revertMessage(err, Wallet.allContracts())) +
           " Is the Hardhat node running?</div>"
       );
+      grid.innerHTML = "";
+      UI.clearBusy(grid);
       resultCount.textContent = "—";
     } finally {
       loading = false;
@@ -131,7 +135,7 @@
         <div class="flight-foot">
           <span class="price">${UI.ethFormat(f.priceWei)}</span>
           <button type="button" class="btn btn-primary" data-select="${id}"${can ? "" : ` disabled title="${UI.escapeHtml(blockedReason(f))}"`}>
-            ${can ? "Select seat" : "Unavailable"}
+            ${can ? "Book" : "Unavailable"}
           </button>
         </div>
       </article>`;
@@ -155,6 +159,7 @@
   }
 
   function render() {
+    UI.clearBusy(grid);
     const visible = applyFilters(flights);
     resultCount.textContent =
       `${visible.length} flight${visible.length === 1 ? "" : "s"}` +
@@ -175,6 +180,9 @@
   grid.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-select]");
     if (!btn || btn.disabled) return;
+    // Carried as well as in the query: some static servers (e.g. `serve`) 301-strip
+    // the query when they rewrite checkout.html to /checkout.
+    sessionStorage.setItem("checkout.flight", btn.dataset.select);
     window.location.href = `checkout.html?flight=${btn.dataset.select}`;
   });
 

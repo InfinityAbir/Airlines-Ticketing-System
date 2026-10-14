@@ -24,13 +24,14 @@
           <li><a href="marketplace.html">Marketplace</a></li>
           <li><a href="tickets.html" aria-current="page">My Tickets</a></li>
           <li><a href="airline.html">Airline</a></li>
-          <li><a href="admin.html">Admin</a></li>
+          <li><a href="admin.html">Admin Console</a></li>
           <li><a href="verify.html">Verify</a></li>
         </ul>
         <div class="nav-right">
           <span class="pill pill-idle" data-role="network">Checking network…</span>
           <span class="role-chip" data-role="role">Guest</span>
-          <button type="button" class="btn btn-primary btn-sm" data-role="connect">Connect wallet</button>
+          <button type="button" class="btn btn-primary btn-sm wallet-login" data-role="login">Login with MetaMask</button>
+          <button type="button" class="btn btn-ghost btn-sm wallet-logout" data-role="logout" hidden>Logout</button>
         </div>
       </div>
     </nav>
@@ -55,9 +56,11 @@
       <div class="grid" id="active-list"></div>
     </section>
 
-    <section aria-labelledby="past-title">
-      <div class="section-head"><h2 id="past-title">Past &amp; resolved</h2></div>
-      <div class="grid" id="past-list"></div>
+    <section class="card mt-5" aria-labelledby="past-title">
+      <div class="card-title"><h2 id="past-title">Past &amp; resolved</h2></div>
+      <div class="grid" id="past-list">
+        <div class="empty-state">No past tickets.</div>
+      </div>
     </section>
 
     <section class="card mt-5" aria-labelledby="history-title">
@@ -82,7 +85,7 @@
             <tr>
               <th scope="col">Time</th>
               <th scope="col">Event</th>
-              <th scope="col">Details</th>
+              <th scope="col">Summary</th>
               <th scope="col">Transaction</th>
             </tr>
           </thead>

@@ -25,6 +25,14 @@
     notices.innerHTML = html || "";
   }
 
+  /// @notice Drop any shimmering placeholders (or stale cards) when a load cannot proceed.
+  function resetLists() {
+    activeList.innerHTML = "";
+    pastList.innerHTML = '<div class="empty-state">No past tickets.</div>';
+    historyBody.innerHTML = "";
+    [activeList, pastList, historyBody].forEach(UI.clearBusy);
+  }
+
   /// @notice Why cancel is unavailable, or null when it is allowed (DESIGN §3.4).
   function cancelBlockReason(t, flight) {
     const state = STATE_NAMES[Number(t.state)] || "Invalid";
@@ -112,7 +120,6 @@
                 : `<button type="button" class="btn btn-sm" data-action="list" data-token="${tokenId}"
                      ${listReason ? "disabled" : ""} title="${UI.escapeHtml(listReason || "Offer this ticket for resale on the marketplace")}">List for resale</button>`
             }
-            <a class="btn btn-sm btn-ghost" href="${UI.escapeHtml(link)}">Verify publicly</a>
           </div>
           ${isListed ? '<div class="xsmall muted">Listed — a buyer can purchase this ticket from the Marketplace page.</div>' : ""}
           <div class="ticket-verify">
@@ -121,7 +128,7 @@
                 ? `<a class="qr-thumb" href="${UI.escapeHtml(link)}" tabindex="-1" aria-hidden="true"><img src="${qr}" alt=""></a>`
                 : ""
             }
-            <span class="xsmall muted">Scan or open <a href="${UI.escapeHtml(link)}">verify.html?ticketId=${tokenId}</a> — anyone can check this ticket without a wallet.</span>
+            <span class="xsmall muted">Public verification: scan the code or open the <a href="${UI.escapeHtml(link)}">public verifier</a> to confirm this ticket's status — no wallet or account required.</span>
           </div>
         </div>
         <div class="ticket-stub">
@@ -600,6 +607,7 @@
   };
 
   function renderHistory() {
+    UI.clearBusy(historyBody);
     const filter = historyFilter ? historyFilter.value : "all";
     const allowed = HISTORY_GROUPS[filter] ?? null;
     const rows = historyRows.filter((r) => !allowed || allowed.includes(r.type));
@@ -648,15 +656,13 @@
         type: "booking",
         blockNumber: e.blockNumber,
         hash: e.transactionHash,
-        details:
-          `Flight #${Number(e.args.flightId)} · ticket #${Number(e.args.tokenId)} ` +
-          `${UI.sourceBadge(e.args.cid)}`,
+        details: `Ticket #${Number(e.args.tokenId)} issued for flight #${Number(e.args.flightId)}`,
       })),
       ...cancels.map((e) => ({
         type: "cancel",
         blockNumber: e.blockNumber,
         hash: e.transactionHash,
-        details: `Ticket #${Number(e.args.tokenId)} closed as <strong>Cancelled</strong>`,
+        details: `Ticket #${Number(e.args.tokenId)} cancelled — the seat returned to flight inventory`,
       })),
       ...refunds
         .filter((e) => owned.has(Number(e.args.tokenId)))
@@ -665,16 +671,16 @@
           blockNumber: e.blockNumber,
           hash: e.transactionHash,
           details:
-            `Ticket #${Number(e.args.tokenId)} · refund ${UI.ethFormat(e.args.refund)} ` +
-            `· retained ${UI.ethFormat(e.args.retained)}`,
+            `Refund of ${UI.ethFormat(e.args.refund)} paid for ticket #${Number(e.args.tokenId)} ` +
+            `· ${UI.ethFormat(e.args.retained)} retained by the airline`,
         })),
       ...created.map((e) => ({
         type: "listing",
         blockNumber: e.blockNumber,
         hash: e.transactionHash,
-        details:
-          `Ticket #${Number(e.args.tokenId)} listed for ${UI.ethFormat(e.args.priceWei)} ` +
-          `· expires ${UI.formatTimestamp(e.args.expiresAt)}`,
+          details:
+            `Ticket #${Number(e.args.tokenId)} listed at ${UI.ethFormat(e.args.priceWei)} ` +
+            `· offer expires ${UI.formatTimestamp(e.args.expiresAt)}`,
       })),
       ...withdrawn
         .filter((e) => isMine(Number(e.args.listingId)))
@@ -682,7 +688,7 @@
           type: "listing",
           blockNumber: e.blockNumber,
           hash: e.transactionHash,
-          details: `Listing #${Number(e.args.listingId)} withdrawn before a sale`,
+          details: `Listing #${Number(e.args.listingId)} withdrawn before any sale`,
         })),
       ...sold
         .filter((e) => isMine(Number(e.args.listingId)))
@@ -692,7 +698,8 @@
           hash: e.transactionHash,
           details:
             `Ticket #${Number(e.args.tokenId)} sold for ${UI.ethFormat(e.args.priceWei)} ` +
-            `· royalty ${UI.ethFormat(e.args.royalty)} · you received ${UI.ethFormat(e.args.sellerProceeds)}`,
+            `· you received ${UI.ethFormat(e.args.sellerProceeds)} ` +
+            `· airline royalty ${UI.ethFormat(e.args.royalty)}`,
         })),
       ...sold
         .filter((e) => (e.args.buyer || "").toLowerCase() === address.toLowerCase())
@@ -702,7 +709,7 @@
           hash: e.transactionHash,
           details:
             `Ticket #${Number(e.args.tokenId)} bought for ${UI.ethFormat(e.args.priceWei)} ` +
-            `· airline royalty included ${UI.ethFormat(e.args.royalty)}`,
+            `· airline royalty of ${UI.ethFormat(e.args.royalty)} included`,
         })),
     ];
 
@@ -739,6 +746,9 @@
   async function load() {
     if (loading) return;
     loading = true;
+    UI.skeletonTickets(activeList, 2);
+    UI.skeletonTickets(pastList, 1);
+    UI.skeletonRows(historyBody, 4, 4);
     try {
       await Wallet.ready;
       if (Wallet.configMissing()) {
@@ -746,6 +756,7 @@
           '<div class="notice notice-danger"><strong>Contract configuration missing.</strong> ' +
             "Run <code>npm run deploy</code>, then reload.</div>"
         );
+        resetLists();
         resultCount.textContent = "";
         return;
       }
@@ -754,6 +765,7 @@
           '<div class="notice notice-warn"><strong>No wallet detected.</strong> ' +
             "Install MetaMask (or a compatible wallet) to hold and verify tickets.</div>"
         );
+        resetLists();
         return;
       }
       if (!Wallet.state.address) {
@@ -763,6 +775,7 @@
         );
         const inline = document.getElementById("inline-connect");
         if (inline) inline.addEventListener("click", () => Wallet.connect());
+        resetLists();
         return;
       }
       if (!Wallet.isSupportedChain()) {
@@ -773,6 +786,7 @@
         );
         const sw = document.getElementById("inline-switch");
         if (sw) sw.addEventListener("click", () => Wallet.ensureChain());
+        resetLists();
         return;
       }
 
@@ -844,12 +858,14 @@
       const past = tickets.filter((r) => !active.includes(r));
 
       resultCount.textContent = `${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`;
+      UI.clearBusy(activeList);
+      UI.clearBusy(pastList);
 
       if (tickets.length === 0) {
         activeList.innerHTML =
           '<div class="notice empty-state" style="grid-column:1/-1">No tickets in this wallet yet. ' +
           '<a href="flights.html">Browse flights</a> to book your first seat.</div>';
-        pastList.innerHTML = "";
+        pastList.innerHTML = '<div class="empty-state">No past tickets.</div>';
         // History still matters here: a wallet that sold or cancelled its last ticket owns
         // nothing but must keep seeing its booking / listing / resale activity.
         await loadHistory(address, []);
@@ -863,7 +879,7 @@
       pastList.innerHTML =
         past.length > 0
           ? past.map((r) => ticketCardHtml(r.id, r.t, r.flight, r.listing)).join("")
-          : '<div class="notice empty-state" style="grid-column:1/-1">No past tickets.</div>';
+          : '<div class="empty-state">No past tickets.</div>';
 
       // Verify each ticket's CID (network-dependent; runs after paint).
       document.querySelectorAll(".ticket[data-token]").forEach((card) => {
@@ -879,6 +895,7 @@
       );
     } catch (err) {
       console.error(err);
+      resetLists();
       setNotice(
         '<div class="notice notice-danger"><strong>Could not load tickets.</strong> ' +
           UI.escapeHtml(UI.revertMessage(err, Wallet.allContracts())) +

@@ -70,6 +70,27 @@ export async function walletPage(browser, who, mode = "connected") {
   return page;
 }
 
+/**
+ * Sign in through the UI. The app treats an injected wallet as signed out on purpose
+ * (FR-04: MetaMask may already hold an approved account), so every authenticated test
+ * has to click Login rather than rely on `eth_accounts` auto-connecting. Waits for the
+ * Logout control, which `Wallet.renderChrome()` reveals only once an address is set.
+ */
+export async function signIn(page, timeout = 45_000) {
+  const login = page.locator('[data-role="login"]:not([hidden])').first();
+  await login.waitFor({ state: "visible", timeout });
+  await login.click();
+  await page.waitForSelector('[data-role="logout"]:not([hidden])', { timeout });
+}
+
+/** Open a page as `who` and sign in. Public/guest pages use `walletPage` + `goto` instead. */
+export async function openSignedIn(browser, who, url) {
+  const page = await walletPage(browser, who, "connected");
+  await page.goto(url);
+  await signIn(page);
+  return page;
+}
+
 /** Close a helper page, folding its console noise into the shared error list. */
 export async function closeQuiet(page) {
   const errs = (page.__errs || []).filter((e) => !IGNORE.test(e));

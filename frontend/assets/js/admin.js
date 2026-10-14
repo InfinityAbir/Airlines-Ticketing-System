@@ -136,6 +136,8 @@
     approvalsCard.hidden = true;
     limitsCard.hidden = true;
     pauseCard.hidden = true;
+    statsRow.hidden = true;
+    UI.statsLoading(statsRow, false);
   }
 
   function showAdminCards() {
@@ -562,6 +564,7 @@
     );
     document.getElementById("stat-flights").textContent = String(flights.length);
     document.getElementById("stat-tickets").textContent = String(tickets.length);
+    UI.statsLoading(statsRow, false);
     statsRow.hidden = false;
     platformPill.textContent = platformPaused
       ? `${candidates.length} operator wallets · platform paused`
@@ -764,6 +767,7 @@
   }
 
   function renderAudit() {
+    UI.clearBusy(auditBody);
     const rows = filteredEvents();
     auditHint.textContent = `FR-34 — read-only event trail · ${rows.length} of ${events.length} events`;
     const empty = events.length === 0
@@ -788,18 +792,22 @@
   async function load() {
     if (loading) return;
     loading = true;
+    UI.statsLoading(statsRow, true);
+    UI.skeletonRows(auditBody, 4, 6);
     try {
       await Wallet.ready;
       if (Wallet.configMissing()) {
         setNotice(
           '<div class="notice notice-danger"><strong>Contract configuration missing.</strong> ' +
-            "Run <code>npm run deploy</code>, then reload.</div>"
+            'Run <code>npm run deploy</code>, then reload.</div>'
         );
         hideAdminCards();
         platformPill.textContent = "Contracts not loaded";
         auditBody.innerHTML = '<tr><td colspan="4" class="empty-state">Contracts not loaded.</td></tr>';
         return;
       }
+
+
 
       const registry = Wallet.readPublic("AirlineRegistry");
       const inventory = Wallet.readPublic("FlightInventory");
@@ -878,6 +886,9 @@
       renderAudit();
     } catch (err) {
       console.error(err);
+      UI.statsLoading(statsRow, false);
+      statsRow.hidden = true;
+      auditBody.innerHTML = '<tr><td colspan="4" class="empty-state">Could not load the audit feed.</td></tr>';
       setNotice(
         '<div class="notice notice-danger"><strong>Could not load administration data.</strong> ' +
           UI.escapeHtml(UI.revertMessage(err, Wallet.allContracts())) +
@@ -885,6 +896,8 @@
       );
     } finally {
       loading = false;
+      UI.clearBusy(auditBody);
+      UI.statsLoading(statsRow, false);
     }
   }
 

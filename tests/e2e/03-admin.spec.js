@@ -8,6 +8,7 @@ import {
   norm,
   pageErrors,
   shot,
+  signIn,
   text,
   waitText,
   walletPage,
@@ -16,6 +17,7 @@ import {
 async function openAdmin(browser, who, mode) {
   const page = await walletPage(browser, who, mode);
   await page.goto("/admin.html");
+  if (mode !== "guest") await signIn(page);
   await page.waitForSelector("#audit-body", { timeout: 45_000 });
   return page;
 }
