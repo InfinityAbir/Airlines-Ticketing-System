@@ -119,7 +119,7 @@ This is also my exploration of production-grade Solidity patterns: OpenZeppelin 
 ### 6. Deployment, Evaluation & Verification
 
 - `npm run deploy` writes `frontend/assets/js/contracts-config.js` (chainId + 5 addresses, git-ignored)
-- `npm run seed` approves one airline and publishes the sample flight `R1-DEMO-001`
+- `npm run seed` approves three airline operators and plants the demo dataset: the five-seat `R1-DEMO-001` flight plus eight showcase flights and seven tickets covering resale, refunds and boarding
 - `npm run eval` deploys in-process and asserts every PRD §15 step (7/7) with exact-wei accounting
 - 110 unit tests cover role gates, validation rejections, the pause matrix, purchase, cancellation, the full resale split, and the failure path of every public state-changing function
 - `npm run test:e2e` runs the tracked Playwright suite over the real frontend (21 tests, 4 specs)
@@ -226,7 +226,12 @@ npm run deploy -- --network localhost
 npm run seed -- --network localhost
 ```
 
-This approves the airline operator wallet, creates and publishes the five-seat sample flight `R1-DEMO-001` (flightId 1), and writes the contract addresses to `frontend/assets/js/contracts-config.js` (git-ignored, generated per environment).
+This approves three airline operator wallets and plants a full demo dataset, so every screen has something to show:
+
+- **9 flights.** `R1-DEMO-001` (flightId 1, five seats, 0.1000 ETH, 80% refund, 5% royalty) stays exactly as the PRD §15 evaluator and the paper describe it, plus eight showcase flights spanning draft, published, paused, cancelled and departed, at 0.11–0.32 ETH across three carriers.
+- **7 tickets** across three travelers: one issued, two listed for resale (the marketplace is never empty), one already resold (the airline dashboard has royalty history), two cancelled with refunds (refund history), and one boarded on a flight departing inside the 2 h check-in window.
+
+It also writes the contract addresses to `frontend/assets/js/contracts-config.js` (git-ignored, generated per environment).
 
 Terminal 3 — serve the frontend and the protected upload endpoint:
 

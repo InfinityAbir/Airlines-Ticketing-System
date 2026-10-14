@@ -64,14 +64,22 @@ test.describe("public surfaces (guest)", () => {
     await closeQuiet(page);
   });
 
-  test("marketplace shows the empty state for a guest", async ({ browser }) => {
+  test("marketplace shows the seeded listings to a guest and still filters to empty", async ({
+    browser,
+  }) => {
     const page = await walletPage(browser, "guest", "guest");
     await page.goto("/marketplace.html");
-    await page.waitForSelector("#listings-grid", { timeout: 30_000 });
-    await waitText(page, "#listings-grid", "No eligible listings");
-    expect(await text(page, "#listings-grid")).toContain("No eligible listings");
-    expect(await text(page, "#result-count")).toMatch(/0\s+listing/i);
-    await shot(page, "02-marketplace-empty");
+    await page.waitForSelector("[data-listing-card]", { timeout: 45_000 });
+    const grid = await text(page, "#listings-grid");
+    expect(grid).toMatch(/#\d+/); // the listing card names the ticket it carries
+    expect(grid).toMatch(/royalty/i); // the split is shown before any wallet connects
+    expect(await text(page, "#result-count")).toMatch(/\d+\s+listing/i);
+    await shot(page, "02-marketplace-listings");
+
+    // Filters still narrow to nothing, which is the empty state worth pinning now
+    // that the marketplace is not empty on a fresh seed.
+    await page.fill("#filter-max-price", "0.0001");
+    await waitText(page, "#listings-grid", "No eligible listings match");
     await closeQuiet(page);
   });
 

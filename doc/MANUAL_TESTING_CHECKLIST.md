@@ -24,7 +24,7 @@
 | ENV-01 | Fresh clone builds | Clone repo, `npm install`, `npm run compile` | 5 contracts compile with solc 0.8.28, no errors | High |
 | ENV-02 | Test suite boots its own chain | `npm test` | Runner starts a local node, runs Mocha, tears down; all tests pass | High |
 | ENV-03 | Generated config is environment-specific | `npm run deploy -- --network localhost` | `frontend/assets/js/contracts-config.js` appears (git-ignored) with chainId 31337 and 5 addresses | High |
-| ENV-04 | Seed creates the demo dataset | `npm run seed -- --network localhost` | Airline `0x7099…79C8` approved; flight `R1-DEMO-001` (id 1) published, 5 seats, 0.1000 ETH, 80% refund, 5% royalty | High |
+| ENV-04 | Seed creates the demo dataset | `npm run seed -- --network localhost` | 3 operators approved; `R1-DEMO-001` (id 1) published, 5 seats, 0.1000 ETH, 80% refund, 5% royalty; 8 further flights covering draft/published/paused/cancelled/departed; 7 tickets across issued, listed, resold, cancelled and boarded | High |
 | ENV-05 | Evaluator passes from a fresh chain | `npm run eval` | Prints `[1/7]…[7/7] PASS`, `passed: 7, total: 7`, exit code 0 | High |
 | ENV-06 | Browser suite passes | `npm run test:e2e` | All specs green; screenshots land in `doc/screenshots/phase6/` | High |
 

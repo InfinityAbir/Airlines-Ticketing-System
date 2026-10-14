@@ -18,6 +18,13 @@ import {
 const FLIGHT = 1;
 const FARE = "0.1000";
 
+// The seed already mints showcase tickets, so the journey's own ticket ids depend on
+// how many exist. Capture what each step actually mints and follow that, rather than
+// hard-coding 1/2/3.
+let journeyTicketId = null;
+let cancelledTicketId = null;
+let boardingTicketId = null;
+
 test.describe("PRD 15 demo journey (browser)", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -67,7 +74,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await page.click("#confirm-btn");
     await page.waitForSelector("#success-panel:not([hidden])", { timeout: 90_000 });
     const shown = norm(await page.textContent("#success-panel"));
-    expect(shown).toMatch(/ticket #1/i);
+    const minted = shown.match(/ticket #(\d+)/i);
+    expect(minted, `success panel: ${shown.slice(0, 200)}`).toBeTruthy();
+    journeyTicketId = minted[1];
     expect(shown).toMatch(/0x[0-9a-f]{8,}/i); // hash comes from the wallet receipt
     await shot(page, "05-journey-booking-confirmed");
     await closeQuiet(page);
@@ -79,8 +88,8 @@ test.describe("PRD 15 demo journey (browser)", () => {
     const wallet = await walletPage(browser, "traveler", "connected");
     await wallet.goto("/tickets.html");
     await signIn(wallet);
-    await wallet.waitForSelector('article[data-token="1"]', { timeout: 45_000 });
-    const card = norm(await text(wallet, 'article[data-token="1"]'));
+    await wallet.waitForSelector(`article[data-token="${journeyTicketId}"]`, { timeout: 45_000 });
+    const card = norm(await text(wallet, `article[data-token="${journeyTicketId}"]`));
     expect(card).toMatch(/Issued/);
     expect(card).toMatch(/S-1/);
     expect(card).toMatch(/mock fallback|IPFS/); // CID source is tagged, never implied
@@ -88,7 +97,7 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await closeQuiet(wallet);
 
     const verify = await walletPage(browser, "guest", "guest");
-    await verify.goto(`/verify.html?ticketId=1`);
+    await verify.goto(`/verify.html?ticketId=${journeyTicketId}`);
     await waitText(verify, "#verify-result", "Issued");
     const result = await text(verify, "#verify-result");
     expect(result).toMatch(/Issued/);
@@ -105,8 +114,10 @@ test.describe("PRD 15 demo journey (browser)", () => {
     const page = await walletPage(browser, "traveler", "connected");
     await page.goto("/tickets.html");
     await signIn(page);
-    await page.waitForSelector('[data-action="list"][data-token="1"]', { timeout: 45_000 });
-    await page.click('[data-action="list"][data-token="1"]');
+    await page.waitForSelector(`[data-action="list"][data-token="${journeyTicketId}"]`, {
+      timeout: 45_000,
+    });
+    await page.click(`[data-action="list"][data-token="${journeyTicketId}"]`);
     await page.waitForSelector(".modal-backdrop #list-price", { timeout: 30_000 });
 
     const split = norm(await text(page, ".modal-backdrop #list-split"));
@@ -121,8 +132,10 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await waitText(page, ".modal-backdrop #list-hint", "moves to");
     await page.click('.modal-backdrop [data-role="ok"]');
     await page.waitForSelector("#cancel-result:not([hidden])", { timeout: 60_000 });
-    expect(await text(page, "#cancel-result")).toMatch(/Ticket #1 is now listed/);
-    await waitText(page, 'article[data-token="1"]', "Listed");
+    expect(await text(page, "#cancel-result")).toMatch(
+      new RegExp(`Ticket #${journeyTicketId} is now listed`)
+    );
+    await waitText(page, `article[data-token="${journeyTicketId}"]`, "Listed");
     await shot(page, "08-journey-listing-published");
     await closeQuiet(page);
   });
@@ -133,9 +146,12 @@ test.describe("PRD 15 demo journey (browser)", () => {
     const guest = await walletPage(browser, "guest", "guest");
     await guest.goto("/marketplace.html");
     await guest.waitForSelector("[data-buy]", { timeout: 45_000 });
-    const card = norm(await text(guest, "[data-listing-card]"));
-    expect(card).toMatch(/#1\b/);
-    expect(card).toMatch(/royalty/i);
+    // The showcase seed leaves live listings behind, so target this journey's own card.
+    const own = guest.locator("[data-listing-card]", {
+      hasText: new RegExp(`#${journeyTicketId}\\b`),
+    });
+    await own.waitFor({ timeout: 45_000 });
+    expect(norm(await text(own, "[data-listing-card]"))).toMatch(/royalty/i);
     await guest.fill("#filter-max-price", "0.05");
     await waitText(guest, "#listings-grid", "No eligible listings match");
     await guest.click("#filter-clear");
@@ -145,8 +161,12 @@ test.describe("PRD 15 demo journey (browser)", () => {
     const buyer = await walletPage(browser, "buyer", "connected");
     await buyer.goto("/marketplace.html");
     await signIn(buyer);
-    await buyer.waitForSelector("[data-buy]", { timeout: 45_000 });
-    await buyer.click("[data-buy]");
+    // Buy this journey's listing specifically: the showcase seed leaves others on sale.
+    const target = buyer.locator("[data-listing-card]", {
+      hasText: new RegExp(`#${journeyTicketId}\\b`),
+    });
+    await target.waitFor({ timeout: 45_000 });
+    await target.locator("[data-buy]").click();
     await buyer.waitForSelector('.modal-backdrop [data-role="ok"]', { timeout: 30_000 });
     const modal = norm(await text(buyer, ".modal-backdrop"));
     expect(modal).toMatch(/Listing price/);
@@ -163,9 +183,8 @@ test.describe("PRD 15 demo journey (browser)", () => {
     expect(res).toMatch(new RegExp(ACCOUNTS.buyer.slice(0, 10), "i"));
     expect(res).toMatch(/0x[0-9a-f]{8,}/i);
     await shot(buyer, "09-journey-resale-settled");
-    await buyer.waitForFunction(() => !document.querySelector("[data-buy]"), null, {
-      timeout: 45_000,
-    });
+    // Only this listing should disappear; the seeded ones stay on the marketplace.
+    await target.waitFor({ state: "detached", timeout: 45_000 });
     await closeQuiet(buyer);
   });
 
@@ -199,8 +218,8 @@ test.describe("PRD 15 demo journey (browser)", () => {
     const buyer = await walletPage(browser, "buyer", "connected");
     await buyer.goto("/tickets.html");
     await signIn(buyer);
-    await buyer.waitForSelector('article[data-token="1"]', { timeout: 45_000 });
-    expect(norm(await text(buyer, 'article[data-token="1"]'))).toMatch(/Issued/);
+    await buyer.waitForSelector(`article[data-token="${journeyTicketId}"]`, { timeout: 45_000 });
+    expect(norm(await text(buyer, `article[data-token="${journeyTicketId}"]`))).toMatch(/Issued/);
     await buyer.selectOption("#history-filter", "sale");
     await waitText(buyer, "#history-body", "bought for");
     expect(await text(buyer, "#history-body")).toMatch(/bought for/i);
@@ -210,7 +229,7 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await seller.goto("/tickets.html");
     await signIn(seller);
     await seller.waitForSelector("#history-filter", { timeout: 45_000 });
-    expect(await seller.$('article[data-token="1"]')).toBeNull(); // sold, no longer owned
+    expect(await seller.$(`article[data-token="${journeyTicketId}"]`)).toBeNull(); // sold, no longer owned
     await seller.selectOption("#history-filter", "sale");
     await waitText(seller, "#history-body", "sold for");
     expect(await text(seller, "#history-body")).toMatch(/sold for/i);
@@ -219,14 +238,17 @@ test.describe("PRD 15 demo journey (browser)", () => {
 
   test("step 7 - a second ticket cancels for the policy refund", async ({ browser }) => {
     const booked = await book(browser, "traveler");
-    expect(booked.tokenId).toBe(2);
+    expect(booked.tokenId).not.toBe(Number(journeyTicketId));
+    cancelledTicketId = booked.tokenId;
     await closeQuiet(booked.page);
 
     const page = await walletPage(browser, "traveler", "connected");
     await page.goto("/tickets.html");
     await signIn(page);
-    await page.waitForSelector('[data-action="cancel"][data-token="2"]', { timeout: 45_000 });
-    await page.click('[data-action="cancel"][data-token="2"]');
+    await page.waitForSelector(`[data-action="cancel"][data-token="${cancelledTicketId}"]`, {
+      timeout: 45_000,
+    });
+    await page.click(`[data-action="cancel"][data-token="${cancelledTicketId}"]`);
     await page.waitForSelector('.modal-backdrop [data-role="ok"]', { timeout: 30_000 });
 
     // Preview modal repeats the contract math before anything is sent.
@@ -239,13 +261,13 @@ test.describe("PRD 15 demo journey (browser)", () => {
     await page.click('.modal-backdrop [data-role="ok"]');
     await page.waitForSelector("#cancel-result:not([hidden])", { timeout: 90_000 });
     const res = norm(await text(page, "#cancel-result"));
-    expect(res).toMatch(/Ticket #2 cancelled/);
+    expect(res).toMatch(new RegExp(`Ticket #${cancelledTicketId} cancelled`));
     expect(res).toMatch(/Cancelled/);
     expect(res).toMatch(/Refund paid to you/);
     expect(res).toMatch(/0\.0800/);
     expect(res).toMatch(/0\.0200/);
     expect(res).toMatch(/0x[0-9a-f]{8,}/i);
-    await page.waitForSelector('#past-list article[data-token="2"]', { timeout: 30_000 });
+    await page.waitForSelector(`#past-list article[data-token="${cancelledTicketId}"]`, { timeout: 30_000 });
     await shot(page, "11-journey-cancel-refund");
     await closeQuiet(page);
   });
@@ -254,18 +276,21 @@ test.describe("PRD 15 demo journey (browser)", () => {
     const seller = await walletPage(browser, "buyer", "connected");
     await seller.goto("/tickets.html");
     await signIn(seller);
-    await seller.waitForSelector('[data-action="list"][data-token="1"]', { timeout: 45_000 });
-    await seller.click('[data-action="list"][data-token="1"]');
+    await seller.waitForSelector(`[data-action="list"][data-token="${journeyTicketId}"]`, {
+      timeout: 45_000,
+    });
+    await seller.click(`[data-action="list"][data-token="${journeyTicketId}"]`);
     await seller.waitForSelector(".modal-backdrop #list-price", { timeout: 30_000 });
     await seller.fill(".modal-backdrop #list-price", "0.105");
     await seller.click('.modal-backdrop [data-role="ok"]');
-    await seller.waitForSelector('[data-action="cancel-listing"][data-token="1"]', {
+    await seller.waitForSelector(`[data-action="cancel-listing"][data-token="${journeyTicketId}"]`, {
       timeout: 60_000,
     });
     await closeQuiet(seller);
 
     const booked = await book(browser, "traveler");
-    expect(booked.tokenId).toBe(3);
+    expect(booked.tokenId).not.toBe(cancelledTicketId);
+    boardingTicketId = booked.tokenId;
     await closeQuiet(booked.page);
   });
 
@@ -292,7 +317,9 @@ test.describe("PRD 15 demo journey (browser)", () => {
     // 1) The active resale listing can no longer be bought.
     const guest = await walletPage(browser, "guest", "guest");
     await guest.goto("/marketplace.html");
-    const card = guest.locator("[data-listing-card]", { hasText: "#1" });
+    const card = guest.locator("[data-listing-card]", {
+      hasText: new RegExp(`#${journeyTicketId}\\b`),
+    });
     await card.locator("[data-buy]").waitFor({ timeout: 45_000 });
     expect(await card.locator("[data-buy]").isDisabled()).toBe(true);
     expect((await card.locator("[data-buy]").getAttribute("title")) || "").toMatch(/departed/i);
@@ -306,12 +333,14 @@ test.describe("PRD 15 demo journey (browser)", () => {
     expect(await text(checkout, "#page-notices")).toMatch(/already departed/i);
     await closeQuiet(checkout);
 
-    // 3) Cancelling the still-Issued ticket #3 is disabled with the departure reason.
+    // 3) Cancelling the still-Issued ticket is disabled with the departure reason.
     const canceller = await walletPage(browser, "traveler", "connected");
     await canceller.goto("/tickets.html");
     await signIn(canceller);
-    await canceller.waitForSelector('[data-action="cancel"][data-token="3"]', { timeout: 45_000 });
-    const cancelBtn = canceller.locator('[data-action="cancel"][data-token="3"]');
+    await canceller.waitForSelector(`[data-action="cancel"][data-token="${boardingTicketId}"]`, {
+      timeout: 45_000,
+    });
+    const cancelBtn = canceller.locator(`[data-action="cancel"][data-token="${boardingTicketId}"]`);
     expect(await cancelBtn.isDisabled()).toBe(true);
     expect((await cancelBtn.getAttribute("title")) || "").toMatch(/already departed/i);
     await shot(canceller, "14-journey-cancel-blocked");

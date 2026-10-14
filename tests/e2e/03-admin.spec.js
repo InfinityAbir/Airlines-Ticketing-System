@@ -14,6 +14,13 @@ import {
   walletPage,
 } from "./helpers/fixtures.js";
 
+// `npm run seed` plants the deterministic demo flight first, then eight showcase
+// flights covering every display state (draft, paused, cancelled, departed), three
+// operators, and a spread of issued / listed / resold / refunded / boarded tickets.
+// `seedDemo` still runs first, so flightId 1 is always R1-DEMO-001.
+const SEEDED_FLIGHTS = 9;
+const SEEDED_AIRLINES = 3;
+
 async function openAdmin(browser, who, mode) {
   const page = await walletPage(browser, who, mode);
   await page.goto("/admin.html");
@@ -68,8 +75,8 @@ test.describe("administrator controls", () => {
   test("the admin session renders limits, switches and the coverage matrix", async ({ browser }) => {
     const page = await openAdmin(browser, "admin", "connected");
     await waitText(page, "#page-notices", "Administrator session");
-    expect(await text(page, "#stat-flights")).toBe("1");
-    expect(await text(page, "#stat-airlines")).toBe("1");
+    expect(await text(page, "#stat-flights")).toBe(String(SEEDED_FLIGHTS));
+    expect(await text(page, "#stat-airlines")).toBe(String(SEEDED_AIRLINES));
     expect(await text(page, "#stat-platform")).toMatch(/Live/i);
 
     expect(await page.inputValue("#f-royalty-cap")).toBe("10.00");
@@ -107,7 +114,7 @@ test.describe("administrator controls", () => {
     expect(rows.some((r) => /0x9965507D/.test(r) && /Approved/.test(r))).toBe(true);
     expect(await text(page, ".toast.is-success")).toMatch(/Airline operator approved/i);
     expect(await page.inputValue("#f-wallet")).toBe("");
-    expect(await text(page, "#stat-airlines")).toBe("2");
+    expect(await text(page, "#stat-airlines")).toBe(String(SEEDED_AIRLINES + 1));
     await shot(page, "17-admin-approve-wallet");
 
     const row = page.locator("#approvals-body tr", { hasText: "0x9965507D" });

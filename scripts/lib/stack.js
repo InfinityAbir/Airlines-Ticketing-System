@@ -159,3 +159,222 @@ export async function seedDemo(ethers, addresses) {
     refundDeadline,
   };
 }
+
+/// @notice Showcase dataset for demos, screenshots and manual walkthroughs.
+///         Calls seedDemo first and unchanged, so flightId 1 is always R1-DEMO-001 with the
+///         locked R1 policy and the evaluator's numbers are untouched. On top of that it
+///         approves two further operator wallets and adds flights covering every display
+///         state the UI can show, so a presentation has something to point at.
+///         Operator accounts 6 and 7 are used deliberately: the tracked E2E fixtures reserve
+///         accounts 0-5 for admin/airline/traveler/buyer/spare/newcomer, and the admin spec
+///         approves `newcomer` itself, so it must arrive unapproved.
+/// @param ethers Hardhat ethers instance from `network.create()`.
+/// @param addresses Contract addresses from `deployStack`.
+/// @return {Promise<{demo, operators, flights}>}
+export async function seedShowcase(ethers, addresses) {
+  const signers = await ethers.getSigners();
+  const [admin] = signers;
+
+  // Flight 1 first, byte-for-byte what the Phase 6 evaluator and the paper describe.
+  const demo = await seedDemo(ethers, addresses);
+
+  const registry = await ethers.getContractAt("AirlineRegistry", addresses.AirlineRegistry);
+  const inventory = await ethers.getContractAt("FlightInventory", addresses.FlightInventory);
+
+  const DAY = 24 * 3600;
+  const now = Math.floor(Date.now() / 1000);
+
+  // Operator #1 is the demo airline (signer 1); two more carriers join it.
+  const airlines = [signers[1], signers[6], signers[7]];
+  const operators = [];
+  for (const signer of airlines) {
+    if (!(await registry.isApproved(signer.address))) {
+      await (await registry.connect(admin).approveAirline(signer.address)).wait();
+    }
+    operators.push({ wallet: signer.address, approved: true });
+  }
+
+  // [code, origin, destination, departInHours, seats, priceEth, refundBps, royaltyBps,
+  //  refundLeadHours, operatorIndex, state]
+  const rows = [
+    ["R1-AMS-002", "JFK", "AMS", 18 * 24, 6, "0.11", 8000, 500, 7 * 24, 0, "draft"],
+    ["R2-NRT-014", "JFK", "NRT", 21 * 24, 12, "0.18", 7000, 800, 10 * 24, 1, "published"],
+    ["R2-SIN-022", "LHR", "SIN", 35 * 24, 8, "0.25", 5000, 1000, 14 * 24, 1, "published"],
+    ["R2-BOM-009", "JFK", "BOM", 28 * 24, 20, "0.275", 6500, 700, 9 * 24, 1, "cancelled"],
+    ["R3-DXB-007", "JFK", "DXB", 14 * 24, 16, "0.32", 6000, 600, 7 * 24, 2, "published"],
+    ["R3-CDG-033", "EWR", "CDG", 25 * 24, 10, "0.145", 7500, 400, 12 * 24, 2, "paused"],
+    ["R3-LIS-041", "BOS", "LIS", 9 * 24, 6, "0.19", 5500, 500, 6 * 24, 2, "departed"],
+    // Departs inside the 2 h check-in window, so a ticket on it can be boarded.
+    ["R3-CDG-042", "JFK", "CDG", 1, 4, "0.21", 6000, 500, 0, 2, "published"],
+  ];
+
+  const flights = [];
+  for (const [
+    flightCode,
+    origin,
+    destination,
+    departInHours,
+    seats,
+    priceEth,
+    refundBps,
+    royaltyBps,
+    refundLeadHours,
+    operatorIndex,
+    state,
+  ] of rows) {
+    const operator = airlines[operatorIndex];
+    const departure = now + departInHours * 3600;
+    const refundDeadline = departure - refundLeadHours * 3600;
+
+    const tx = await inventory.connect(operator).createFlight([
+      flightCode,
+      origin,
+      destination,
+      departure,
+      seats,
+      ethers.parseEther(priceEth),
+      refundDeadline,
+      refundBps,
+      royaltyBps,
+    ]);
+    const receipt = await tx.wait();
+    const created = receipt.logs
+      .map((l) => {
+        try {
+          return inventory.interface.parseLog(l);
+        } catch {
+          return null;
+        }
+      })
+      .find((e) => e && e.name === "FlightCreated");
+    const flightId = created.args.flightId.toString();
+
+    // `draft` is created and deliberately left unpublished.
+    if (state !== "draft") {
+      await (await inventory.connect(operator).publishFlight(flightId)).wait();
+    }
+    if (state === "paused") {
+      await (await inventory.connect(operator).pauseSales(flightId)).wait();
+    }
+    if (state === "cancelled") {
+      await (await inventory.connect(operator).cancelFlight(flightId)).wait();
+    }
+    if (state === "departed") {
+      await (await inventory.connect(operator).markDeparted(flightId)).wait();
+    }
+
+    flights.push({
+      flightId,
+      flightCode,
+      origin,
+      destination,
+      operator: operator.address,
+      seats,
+      priceEth,
+      refundBps,
+      royaltyBps,
+      state,
+    });
+  }
+
+  // ---------------------------------------------------------------- tickets
+  // Give every screen something real to show: an issued ticket, live resale
+  // listings, a settled resale with royalty, cancellations with refunds, and a
+  // boarded ticket. Flight 1 is never touched, so the demo flight the journey
+  // spec walks stays pristine.
+  const settlement = await ethers.getContractAt("TicketSettlement", addresses.TicketSettlement);
+  const marketplace = await ethers.getContractAt("TicketMarketplace", addresses.TicketMarketplace);
+  const nft = await ethers.getContractAt("AirTicketNFT", addresses.AirTicketNFT);
+
+  const travelers = [signers[2], signers[8], signers[9]];
+  const byCode = Object.fromEntries(flights.map((f) => [f.flightCode, f]));
+  const tickets = [];
+
+  /// Deterministic stand-in for an IPFS CID: 8-128 alphanumeric characters, as
+  /// TicketSettlement._validateCid requires.
+  const cidFor = (seed) => `mock${seed.padEnd(32, "0").slice(0, 32)}`;
+
+  /// @dev Pull the tokenId out of a receipt; the events live on other contracts, so
+  ///      decode defensively and skip anything that will not parse.
+  function findArg(receipt, contract, eventName, argName) {
+    for (const log of receipt.logs) {
+      try {
+        const parsed = contract.interface.parseLog(log);
+        if (parsed && parsed.name === eventName) return parsed.args[argName];
+      } catch {
+        /* log belongs to another contract */
+      }
+    }
+    throw new Error(`${eventName}.${argName} not found in receipt`);
+  }
+
+  async function buy(holder, code, seed) {
+    const flight = byCode[code];
+    const receipt = await (
+      await settlement
+        .connect(holder)
+        .purchase(BigInt(flight.flightId), cidFor(seed), { value: ethers.parseEther(flight.priceEth) })
+    ).wait();
+    const tokenId = findArg(receipt, settlement, "PurchaseCompleted", "tokenId");
+    tickets.push({ tokenId: tokenId.toString(), code, holder: holder.address, state: "issued" });
+    return tokenId;
+  }
+
+  async function listForResale(seller, tokenId, priceEth, expiresInHours) {
+    const price = ethers.parseEther(priceEth);
+    const expiresAt = now + expiresInHours * 3600;
+    const receipt = await (await marketplace.connect(seller).list(tokenId, price, expiresAt)).wait();
+    const listingId = findArg(receipt, marketplace, "ListingCreated", "listingId");
+    const entry = tickets.find((t) => t.tokenId === tokenId.toString());
+    if (entry) {
+      entry.state = "listed";
+      entry.listingId = listingId.toString();
+      entry.priceEth = priceEth;
+    }
+    return listingId;
+  }
+
+  // --- one issued ticket the traveler simply holds ------------------------------
+  await buy(travelers[0], "R2-NRT-014", "nrt0001");
+
+  // --- two live listings so the marketplace is not empty -----------------------
+  await listForResale(
+    travelers[0],
+    await buy(travelers[0], "R2-NRT-014", "nrt0002"),
+    "0.2",
+    72
+  );
+  await listForResale(
+    travelers[0],
+    await buy(travelers[0], "R2-SIN-022", "sin0001"),
+    "0.27",
+    96
+  );
+
+  // --- a settled resale, so the airline dashboard shows royalty history ---------
+  const soldTicket = await buy(travelers[2], "R3-DXB-007", "dxb0001");
+  const soldListing = await listForResale(travelers[2], soldTicket, "0.35", 120);
+  await (
+    await marketplace.connect(travelers[1]).buyListing(soldListing, { value: ethers.parseEther("0.35") })
+  ).wait();
+  tickets.find((t) => t.tokenId === soldTicket.toString()).state = "resold";
+
+  // --- two cancellations, so refunds appear in both wallets and in history ------
+  for (const [holder, code, seed] of [
+    [travelers[1], "R2-SIN-022", "sin0002"],
+    [travelers[0], "R3-DXB-007", "dxb0002"],
+  ]) {
+    const tokenId = await buy(holder, code, seed);
+    await (await settlement.connect(holder).cancel(tokenId)).wait();
+    tickets.find((t) => t.tokenId === tokenId.toString()).state = "cancelled";
+  }
+
+  // --- a boarded ticket: the flight departs inside the 2 h check-in window -------
+  const boardingTicket = await buy(travelers[0], "R3-CDG-042", "cdg0042");
+  await (
+    await nft.connect(airlines[2]).markUsed(boardingTicket)
+  ).wait();
+  tickets.find((t) => t.tokenId === boardingTicket.toString()).state = "used";
+
+  return { demo, operators, flights, tickets };
+}
