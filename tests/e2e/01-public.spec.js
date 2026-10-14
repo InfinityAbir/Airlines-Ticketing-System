@@ -21,7 +21,7 @@ test.describe("public surfaces (guest)", () => {
     expect(pageErrors, "pages must log no console/page errors").toEqual([]);
   });
 
-  test("flights page lists the seeded published flight", async ({ browser }) => {
+  test("flights page shows only flights that are currently on sale", async ({ browser }) => {
     const page = await walletPage(browser, "guest", "guest");
     await page.goto("/flights.html");
     await page.waitForSelector("#flights-grid", { timeout: 30_000 });
@@ -32,6 +32,18 @@ test.describe("public surfaces (guest)", () => {
     expect(grid).toMatch(/LHR/);
     expect(grid).toMatch(/0 of 5 seats booked/);
     expect(grid).toMatch(/0\.1000\s*ETH/);
+
+    // The catalogue is a storefront. Flights the seed plants in draft, paused,
+    // cancelled or departed state belong on the operator dashboard and the admin
+    // console, not in front of a guest or a traveler.
+    for (const code of ["R1-AMS-002", "R2-BOM-009", "R3-CDG-033", "R3-LIS-041"]) {
+      expect(grid, `${code} must not appear on the public catalogue`).not.toContain(code);
+    }
+    expect(grid).not.toMatch(/Draft|Cancelled|Paused|Departed/);
+    // The on-sale showcase flights do appear.
+    expect(grid).toContain("R2-NRT-014");
+    expect(grid).toContain("R3-DXB-007");
+
     await shot(page, "01-flights-guest");
     await closeQuiet(page);
   });

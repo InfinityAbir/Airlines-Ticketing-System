@@ -6,7 +6,7 @@
 ## 1. Design Principles
 
 1. Wallet-first, role-routed: sign in → show address/network/role → route to the right dashboard, while flights + verification stay public (FR-02/04). Signing in is explicit — a wallet the browser has already authorized stays in its guest state until the person presses Login, so a session is never started by the extension alone.
-2. Status-driven journey: every ticket shows one unambiguous badge (`Issued, Listed, Cancelled, Used, Invalid`; R1 terminal badge is `Cancelled` — `Refunded` is never a badge, refund detail appears in the receipt from the `TicketRefunded` event); every flight shows one display label derived from on-chain flags — `Draft` (created, never published, `salesOpen=false`), `Published` (`salesOpen=true`), `Paused` (sales halted after publish, `salesOpen=false`), `Cancelled` (`cancelled=true`), `Departed` (`departed=true`) — plus a `salesOpen` indicator. Display labels introduce no new storage.
+2. Status-driven journey: every ticket shows one unambiguous badge (`Issued, Listed, Cancelled, Used, Invalid`; R1 terminal badge is `Cancelled` - `Refunded` is never a badge, refund detail appears in the receipt from the `TicketRefunded` event); every flight carries one display label derived from on-chain flags - `Draft` (created, never published, `salesOpen=false`), `Published` (`salesOpen=true`), `Paused` (sales halted after publish, `salesOpen=false`), `Cancelled` (`cancelled=true`), `Departed` (`departed=true`) - plus a `salesOpen` indicator. Display labels introduce no new storage. The public catalogue only ever shows `Published`: the other four are operator state and belong on the airline dashboard and admin console.
 3. Human wording for blockchain: "test ETH", "transaction hash", "CID status", plain-language refund/royalty breakdowns (PRD §12 Explainability).
 4. Prototype honesty: permanent disclosure banner — "Educational prototype. Test ETH, sample flights, simulated credential check. Not a real booking system."
 5. Transaction transparency: every write shows pending → confirmed/failed with hash link (FR-05); failures explain and never show false success.
@@ -34,7 +34,8 @@
 ### 3.2 `flights.html` — catalogue (Everyone / Traveler)
 
 - Filters: origin, destination, date (FR-11). Client-side filtering over published flights; "Clear filters" + result count + empty state ("No flights match — adjust filters").
-- Flight card: `flightCode`, `origin → destination`, departure (local + UTC), seats remaining/capacity bar, price (ETH), refund deadline + refund % preview, royalty % note, airline short address, `salesOpen` badge. Departed/cancelled/paused flights shown greyed with reason, booking disabled.
+- Only flights currently **on sale** are listed: `salesOpen && !cancelled && !departed`. `salesOpen` is exactly that predicate - `publishFlight` sets it, and pause, cancellation and departure all clear it - so draft, paused, cancelled and departed flights never reach the catalogue. Those four states are visible on `airline.html` and `admin.html`, where managing them is the point. A sold-out flight that is still on sale stays listed with its Book button disabled.
+- Flight card: `flightCode`, `origin → destination`, departure (local + UTC), seats remaining/capacity bar, price (ETH), refund deadline + refund % preview, royalty % note, airline short address, `Published` badge.
 - Action: `Select` → `checkout.html?flightId=…` (requires wallet + correct chain at checkout, not to browse).
 
 ### 3.3 `checkout.html` — purchase (Traveler)

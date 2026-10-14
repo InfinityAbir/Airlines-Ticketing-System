@@ -58,7 +58,7 @@
           .catch(() => []),
       ]);
       published = new Set(publishedEvents.map((e) => Number(e.args.flightId)));
-      flights = loaded.filter(Boolean);
+      flights = loaded.filter(Boolean).filter(onSale);
 
       if (platformPaused) {
         setNotice(
@@ -82,6 +82,15 @@
     } finally {
       loading = false;
     }
+  }
+
+  /// The catalogue is a storefront, not an operations board. A flight is listed
+  /// only while it is actually on sale; draft, paused, cancelled and departed
+  /// flights stay visible on the operator dashboard and the admin console, where
+  /// managing them is the whole point. `salesOpen` is exactly that predicate --
+  /// `publishFlight` sets it, and pause, cancel and departure all clear it.
+  function onSale(f) {
+    return Boolean(f.salesOpen) && !f.cancelled && !f.departed;
   }
 
   function bookable(f) {
@@ -169,7 +178,7 @@
       grid.innerHTML =
         '<div class="notice empty-state" style="grid-column:1/-1">' +
         (flights.length === 0
-          ? "No flights on chain yet. An airline operator creates the first one from the Airline page."
+          ? "No flights are on sale right now. Operators publish new departures regularly — check back soon."
           : "No flights match these filters.") +
         "</div>";
       return;
